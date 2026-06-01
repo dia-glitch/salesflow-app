@@ -63,9 +63,10 @@ exports.handler = async (event) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Bisa diganti ke model lain bila perlu (lihat docs.claude.com/en/docs/about-claude/models)
-        model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        // Model cepat (Haiku) agar selesai dalam batas waktu function Netlify (~10 dtk).
+        // Bisa diganti ke Sonnet/Opus bila timeout function dinaikkan. Lihat docs.claude.com/en/docs/about-claude/models
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
         system,
         messages: [{ role: "user", content: userMsg }],
       }),
