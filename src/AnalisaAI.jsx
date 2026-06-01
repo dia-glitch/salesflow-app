@@ -18,6 +18,23 @@ export default function AnalisaAI() {
   const [answerErr, setAnswerErr] = useState("");
   const [question, setQuestion] = useState("");
 
+  const [me, setMe] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [viewLabel, setViewLabel] = useState("");
+
+  async function loadHistory() {
+    const { data } = await supabase
+      .from("ai_analyses")
+      .select("id,created_at,created_email,period,kind,question,answer")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setHistory(data || []);
+  }
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setMe(data?.user || null));
+    loadHistory();
+  }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true); setError("");
@@ -169,12 +186,43 @@ export default function AnalisaAI() {
       });
       const j = await res.json();
       if (!res.ok) { setAnswerErr(j.error || "Gagal memanggil AI."); }
-      else { setAnswer(j.text || "(kosong)"); }
+      else {
+        setAnswer(j.text || "(kosong)");
+        setViewLabel("");
+        // simpan ke riwayat
+        try {
+          await supabase.from("ai_analyses").insert({
+            created_by: me?.id || null,
+            created_email: me?.email || null,
+            period: month,
+            kind: q ? "question" : "report",
+            question: q || null,
+            answer: j.text || "",
+            data_snapshot: summary,
+          });
+          loadHistory();
+        } catch (_) { /* gagal simpan tidak menghentikan tampilan hasil */ }
+      }
     } catch (e) {
       setAnswerErr(e.message || "Kesalahan jaringan.");
     } finally {
       setBusy(false);
     }
+  }
+
+  function openSaved(h) {
+    setAnswer(h.answer || "");
+    setAnswerErr("");
+    setBusy(false);
+    const when = new Date(h.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+    setViewLabel(`Riwayat · ${h.kind === "question" ? "Tanya" : "Analisa"} ${h.period || ""} · ${when}`);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  }
+  async function deleteSaved(id) {
+    if (!confirm("Hapus item riwayat ini?")) return;
+    const { error } = await supabase.from("ai_analyses").delete().eq("id", id);
+    if (error) { alert("Gagal hapus: " + error.message); return; }
+    setHistory((h) => h.filter((x) => x.id !== id));
   }
 
   if (loading) return <div className="center-msg">Memuat data…</div>;
@@ -215,6 +263,7 @@ export default function AnalisaAI() {
       {(busy || answer || answerErr) && (
         <div className="card">
           <div className="section-label">Hasil analisa</div>
+          {viewLabel && <div className="small muted" style={{ marginTop: 4 }}>{viewLabel}</div>}
           {busy ? (
             <p className="muted" style={{ marginTop: 10 }}>Sedang berpikir…</p>
           ) : answerErr ? (
@@ -224,6 +273,36 @@ export default function AnalisaAI() {
           )}
         </div>
       )}
+
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="section-label">Riwayat analisa</span>
+          <span className="small muted">{fmtNum(history.length)} tersimpan</span>
+        </div>
+        {history.length === 0 ? (
+          <p className="small muted" style={{ marginTop: 10 }}>Belum ada riwayat. Hasil analisa akan otomatis tersimpan di sini.</p>
+        ) : (
+          <div style={{ marginTop: 10 }}>
+            {history.map((h) => {
+              const when = new Date(h.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+              const title = h.kind === "question" ? (h.question || "Pertanyaan") : `Analisa bulanan ${h.period || ""}`;
+              return (
+                <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+                  <span className="pill" style={{ background: "var(--paper)", color: "var(--sub)", flexShrink: 0 }}>
+                    {h.kind === "question" ? "Tanya" : "Analisa"}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+                    <div className="small muted">{when}{h.created_email ? " · " + h.created_email : ""}</div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openSaved(h)}>Buka</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => deleteSaved(h.id)} title="Hapus" style={{ color: "var(--bad)" }}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
