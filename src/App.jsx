@@ -7,6 +7,7 @@ import CollectionPerf from "./CollectionPerf.jsx";
 import InputManual from "./InputManual.jsx";
 import UploadFile from "./UploadFile.jsx";
 import AdminPanel from "./AdminPanel.jsx";
+import AnalisaAI from "./AnalisaAI.jsx";
 import Login from "./Login.jsx";
 import { hasConfig, supabase } from "./supabaseClient.js";
 import { canView } from "./permissions.js";
@@ -67,6 +68,7 @@ export default function App() {
           if (view === "sales") return <Sales role={role} />;
           if (view === "skus") return <SkuMaster role={role} />;
           if (view === "collection") return <CollectionPerf />;
+          if (view === "ai") return <AnalisaAI />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;
           if (view === "upload") return <UploadFile role={role} />;
           if (view === "input") return <InputManual role={role} />;

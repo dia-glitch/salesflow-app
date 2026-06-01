@@ -15,6 +15,7 @@ const VIEW = {
   skus: "all",
   input: ["bi", "md_sales", "manager", "finance", "admin"],   // exclude RnD, Director, Store Ops
   upload: ["bi", "md_sales", "manager", "finance", "admin"],   // exclude RnD, Director, Store Ops
+  ai: ["bi", "md_sales", "manager", "director", "finance", "admin"], // analitik AI: exclude RnD, Store Ops
   admin: ["admin"],
 };
 

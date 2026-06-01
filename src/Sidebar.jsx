@@ -7,6 +7,7 @@ const GROUPS = [
     items: [
       { k: "dash", label: "Dashboard", icon: "M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6V11h-6v9Zm0-16v5h6V4h-6Z" },
       { k: "collection", label: "Collection", icon: "M4 5h16v4H4zM4 11h16v8H4z" },
+      { k: "ai", label: "Analisa AI", icon: "M12 3l2.1 5.5L20 10l-5.9 1.5L12 17l-2.1-5.5L4 10l5.9-1.5z M18 15l.9 2.3L21 18l-2.1.7L18 21l-.9-2.3L15 18l2.1-.7z" },
     ],
   },
   {
