@@ -1,0 +1,77 @@
+import { useEffect } from "react";
+import { canView } from "./permissions.js";
+
+const GROUPS = [
+  {
+    title: "Overview",
+    items: [
+      { k: "dash", label: "Dashboard", icon: "M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6V11h-6v9Zm0-16v5h6V4h-6Z" },
+      { k: "collection", label: "Collection", icon: "M4 5h16v4H4zM4 11h16v8H4z" },
+    ],
+  },
+  {
+    title: "Sales",
+    items: [
+      { k: "sales", label: "Penjualan", icon: "M4 6h16M4 12h16M4 18h16" },
+      { k: "input", label: "Input sales", icon: "M12 5v14M5 12h14" },
+      { k: "upload", label: "Upload sales", icon: "M12 16V4M7 9l5-5 5 5M5 20h14" },
+    ],
+  },
+  {
+    title: "Data",
+    items: [
+      { k: "skus", label: "SKU Master", icon: "M4 7h16M4 7l1 13h14l1-13M9 7V4h6v3" },
+    ],
+  },
+  {
+    title: "Admin panel",
+    items: [
+      { k: "admin", label: "Admin Panel", icon: "M12 15a3 3 0 100-6 3 3 0 000 6Z M19.4 13a7.5 7.5 0 000-2l2-1.5-2-3.4-2.3 1a7.5 7.5 0 00-1.7-1L15 3.2h-4l-.4 2.4a7.5 7.5 0 00-1.7 1l-2.3-1-2 3.4L4.6 11a7.5 7.5 0 000 2l-2 1.5 2 3.4 2.3-1a7.5 7.5 0 001.7 1l.4 2.4h4l.4-2.4a7.5 7.5 0 001.7-1l2.3 1 2-3.4-2-1.5Z" },
+    ],
+  },
+];
+
+const labelStyle = {
+  fontSize: 11, fontWeight: 600, letterSpacing: ".08em",
+  textTransform: "uppercase", color: "var(--faint)", padding: "16px 12px 6px",
+};
+
+export default function Sidebar({ tab, setTab, role }) {
+  useEffect(() => { document.title = "SALESFLOW · ALEZA"; }, []);
+  return (
+    <div className="sidebar">
+      <div className="brand" style={{ display: "block" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".14em", color: "var(--faint)" }}>SALESFLOW</div>
+        <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1, marginTop: 2, color: "var(--ink)" }}>ALEZA</div>
+        <div className="small muted" style={{ marginTop: 3 }}>PT Asa Modakreasi Indonesia</div>
+      </div>
+
+      {GROUPS.map((g) => {
+        const items = g.items.filter((it) => canView(role, it.k));
+        if (items.length === 0) return null;
+        return (
+          <div key={g.title}>
+            <div style={labelStyle}>{g.title}</div>
+            {items.map((it) => (
+              <button
+                key={it.k}
+                className={"nav" + (tab === it.k ? " active" : "")}
+                onClick={() => setTab(it.k)}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={it.icon} />
+                </svg>
+                {it.label}
+              </button>
+            ))}
+          </div>
+        );
+      })}
+
+      <div className="foot">
+        Master &amp; stok ditarik dari project <b>Production</b> (cf_*)
+      </div>
+    </div>
+  );
+}
