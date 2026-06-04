@@ -9,6 +9,14 @@ const stripSize = (name, size) => {
 };
 const stTone = (p) => p >= 60 ? "var(--good)" : p >= 35 ? "var(--warn)" : "var(--bad)";
 
+// Kategori koleksi dari prefix kode (CR-001 → Core). Prefix tak dikenal → tampil apa adanya.
+const COLL_CAT = { CR: "Core", RY: "Raya", ES: "Esense" };
+const collCat = (code) => {
+  const m = String(code || "").match(/^[A-Za-z]+/);
+  const p = m ? m[0].toUpperCase() : "";
+  return COLL_CAT[p] || (p || "—");
+};
+
 export default function ProductTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -89,7 +97,7 @@ export default function ProductTab() {
     const st = (sold, stock) => (sold + stock > 0 ? (sold / (sold + stock)) * 100 : 0);
 
     let tSold = 0, tStock = 0, tRev = 0, tCost = 0;
-    const byColl = {}, byProd = {}, bySize = {}, byCat = {};
+    const byColl = {}, byProd = {}, bySize = {}, byCat = {}, byCollCat = {};
     const styles = new Set();
     skuAgg.forEach((r) => {
       tSold += r.sold; tStock += r.stock; tRev += r.rev; tCost += r.cost;
@@ -102,6 +110,7 @@ export default function ProductTab() {
       acc(byProd, r.code);
       acc(bySize, r.size || "—");
       acc(byCat, r.cat1);
+      acc(byCollCat, collCat(r.collection));
     });
 
     const toArr = (obj) => Object.entries(obj).map(([k, v]) => ({
@@ -115,13 +124,14 @@ export default function ProductTab() {
     const slow = [...prods].sort((a, b) => a.st - b.st).slice(0, 10);
     const sizes = toArr(bySize).filter((s) => s.key !== "—").sort((a, b) => b.st - a.st);
     const cats = toArr(byCat).filter((c) => c.key !== "—").sort((a, b) => b.st - a.st);
+    const collCats = toArr(byCollCat).filter((c) => c.key !== "—").sort((a, b) => b.st - a.st);
 
     return {
       avgST: st(tSold, tStock), tSold, tStock,
       avgMargin: tRev > 0 ? ((tRev - tCost) / tRev) * 100 : 0,
       styles: styles.size,
       colls: colls.slice(0, 10), cogmColls: [...colls].sort((a, b) => b.margin - a.margin).slice(0, 10),
-      best, slow, sizes, cats,
+      best, slow, sizes, cats, collCats,
     };
   }, [skuAgg]);
 
@@ -141,6 +151,17 @@ export default function ProductTab() {
       <p className="small muted" style={{ marginTop: -4, marginBottom: 14 }}>
         Kumulatif (sepanjang waktu) · sell-through = terjual ÷ (terjual + stok terkini)
       </p>
+
+      <div className="card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <span className="section-label">Sell-through per kategori koleksi</span>
+          <span className="small muted">Core · Raya · Esense · dst</span>
+        </div>
+        {data.collCats.length === 0 ? <p className="small muted">—</p> :
+          data.collCats.map((c) => (
+            <STBar key={c.key} label={c.key} sub={`${fmtNum(c.sold)} / ${fmtNum(c.sold + c.stock)}`} pct={c.st} color={stTone(c.st)} />
+          ))}
+      </div>
 
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
