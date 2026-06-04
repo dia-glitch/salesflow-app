@@ -3,7 +3,8 @@ import { supabase } from "./supabaseClient.js";
 import { fmtNum } from "./format.js";
 
 const WINDOW_DAYS = 30;       // window laju jual
-const PROD_COVER_WARN = 21;   // cover < ini → produksi segera
+const PROD_COVER_WARN = 21;   // cover < ini → produksi segera (merah)
+const PROD_COVER_WATCH = 45;  // cover < ini → tampil (pantau); di atas ini = aman, disembunyikan
 const STORE_COVER_WARN = 14;  // cover store < ini → restock store
 const TARGET_COVER = 30;      // target cover utk hitung qty rekomendasi
 const WH_SOURCE = "WH-MAIN";  // sumber stok restock ke store
@@ -104,7 +105,7 @@ export default function RestockNotif() {
     });
     const prodRows = Object.values(styleAgg)
       .map((a) => { const vel = a.sold / WINDOW_DAYS; return { ...a, vel, cover: vel > 0 ? a.stock / vel : Infinity }; })
-      .filter((a) => a.vel > 0)
+      .filter((a) => a.vel > 0 && a.cover < PROD_COVER_WATCH)
       .sort((x, y) => x.cover - y.cover);
 
     // ---- Sinyal 2: distribusi (store × sku) ----
@@ -147,7 +148,7 @@ export default function RestockNotif() {
           <span className="small muted">{prodUrgent} perlu segera · cover &lt; {PROD_COVER_WARN}h</span>
         </div>
         {data.prodRows.length === 0
-          ? <p className="small muted">Belum ada penjualan dalam {WINDOW_DAYS} hari terakhir.</p>
+          ? <p className="small muted">Tidak ada sinyal produksi — semua style aman (cover &gt; {PROD_COVER_WATCH} hari) atau belum ada penjualan {WINDOW_DAYS} hari terakhir.</p>
           : <div style={{ overflowX: "auto" }}>
               <table>
                 <thead><tr style={{ background: "var(--paper)" }}>
