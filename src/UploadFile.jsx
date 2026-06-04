@@ -12,6 +12,8 @@ const ALIASES = {
   disc: ["discount", "diskon"],
   retail: ["retail_price", "retail", "harga_retail"],
   date: ["txn_date", "tanggal", "date"],
+  channel: ["channel", "channel_id", "kanal", "channel_name"],
+  store: ["store", "toko", "lokasi", "location", "location_id", "store_name"],
 };
 const getField = (nrow, keys) => {
   for (const k of keys) if (nrow[k] !== undefined && nrow[k] !== "") return nrow[k];
@@ -84,10 +86,26 @@ export default function UploadFile({ role }) {
   const channel = channels.find((c) => c.channel_id === channelId);
   const offline = channel && channel.kind === "offline";
   const stores = locations.filter((l) => l.type === "store");
+  const locName = useMemo(() => { const m = {}; locations.forEach((l) => (m[l.location_id] = l.name || l.location_id)); return m; }, [locations]);
 
-  const locInfo = !channel ? "" : offline
-    ? `Channel toko → stok berkurang di store yang dipilih · basis net: ${channel.default_net_basis}`
-    : `Channel online → stok dari ${channel.fulfill_location_id} · basis net: ${channel.default_net_basis}`;
+  const resolveChannel = (val) => {
+    const v = String(val || "").trim().toLowerCase();
+    if (!v) return null;
+    return channels.find((c) => String(c.channel_id).toLowerCase() === v || (c.name || "").toLowerCase() === v)
+      || (["online", "offline"].includes(v) ? channels.find((c) => c.kind === v) : null) || null;
+  };
+  const resolveStore = (val) => {
+    const v = String(val || "").trim().toLowerCase();
+    if (!v) return null;
+    return locations.find((l) => l.type === "store" && (
+      String(l.location_id).toLowerCase() === v ||
+      String(l.location_id).toLowerCase().replace(/^st-/, "") === v ||
+      (l.name || "").toLowerCase() === v ||
+      (l.name || "").toLowerCase().replace(/^store\s+/, "") === v
+    )) || null;
+  };
+
+  const locInfo = "Channel & store dibaca per-baris dari file (bisa campur online + banyak store). Pilihan di atas hanya jadi default kalau kolom channel/store di baris itu kosong.";
 
   async function onFile(e) {
     setParseErr(""); setSaveMsg(null); setProcMsg(null);
@@ -114,13 +132,31 @@ export default function UploadFile({ role }) {
         const retail = retailF ?? master?.retail ?? null;
         if ((price === null || price === 0) && retail) price = retail;
 
+        // channel & store per-baris (fallback ke pilihan default di atas)
+        const chan = resolveChannel(getField(n, ALIASES.channel)) || (channelId ? channels.find((c) => c.channel_id === channelId) : null);
+        let loc = null;
+        if (chan) {
+          if (chan.kind === "offline") {
+            const st = resolveStore(getField(n, ALIASES.store)) || (storeId ? locations.find((l) => l.location_id === storeId) : null);
+            loc = st ? st.location_id : null;
+          } else {
+            loc = chan.fulfill_location_id;
+          }
+        }
+
         let ok = true, problem = "";
         if (!sku) { ok = false; problem = "SKU kosong"; }
         else if (!master) { ok = false; problem = "SKU tidak dikenal"; }
         else if (!qty || qty <= 0) { ok = false; problem = "Qty tidak valid"; }
         else if (price === null) { ok = false; problem = "Harga jual kosong"; }
+        else if (!chan) { ok = false; problem = "Channel tidak dikenal"; }
+        else if (chan.kind === "offline" && !loc) { ok = false; problem = "Store tidak dikenal/kosong"; }
 
-        return { sku, name: master?.name || "", qty, price, disc, retail, date: rowDate, ok, problem };
+        return {
+          sku, name: master?.name || "", qty, price, disc, retail, date: rowDate, ok, problem,
+          channel_id: chan?.channel_id || null, channel_name: chan?.name || (getField(n, ALIASES.channel) || ""),
+          location_id: loc, loc_label: loc ? (locName[loc] || loc) : (chan && chan.kind !== "offline" ? chan.fulfill_location_id : "—"),
+        };
       });
       setParsed(out);
     } catch (err) {
@@ -136,8 +172,14 @@ export default function UploadFile({ role }) {
 
   function downloadTemplate() {
     const sample = Object.keys(skuMap)[0] || "SKU-CONTOH";
-    const lines = ["sku,qty,sale_at_price,discount,txn_date",
-      `${sample},1,395000,0,${date}`];
+    const onlineCh = channels.find((c) => c.kind !== "offline");
+    const offlineCh = channels.find((c) => c.kind === "offline");
+    const someStore = stores[0];
+    const lines = [
+      "channel,store,sku,qty,sale_at_price,discount,retail_price,txn_date",
+      `${onlineCh?.name || "Online"},,${sample},1,395000,0,,${date}`,
+      `${offlineCh?.name || "Offline"},${someStore?.name || "Store Contoh"},${sample},1,395000,0,,${date}`,
+    ];
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -149,7 +191,6 @@ export default function UploadFile({ role }) {
     setSaveMsg(null);
     const okRows = parsed.filter((r) => r.ok);
     if (okRows.length === 0) { setSaveMsg({ type: "err", text: "Tidak ada baris valid untuk disimpan." }); return; }
-    const loc = offline ? storeId : channel?.fulfill_location_id;
     const stamp = Date.now();
     let idx = 0;
     const payload = okRows.map((r) => {
@@ -161,8 +202,8 @@ export default function UploadFile({ role }) {
         imported_at: new Date().toISOString(),
         raw: {
           txn_date: r.date || date,
-          channel_id: channelId,
-          location_id: loc,
+          channel_id: r.channel_id,
+          location_id: r.location_id,
           sku: r.sku,
           qty: r.qty,
           retail_price: r.retail,
@@ -214,19 +255,19 @@ export default function UploadFile({ role }) {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <label>Channel</label>
+            <label>Channel default (opsional)</label>
             <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
+              <option value="">— dari kolom CSV —</option>
               {channels.map((c) => (<option key={c.channel_id} value={c.channel_id}>{c.name} ({c.kind})</option>))}
             </select>
           </div>
-          {offline && (
-            <div>
-              <label>Store / lokasi</label>
-              <select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
-                {stores.map((l) => (<option key={l.location_id} value={l.location_id}>{l.name}</option>))}
-              </select>
-            </div>
-          )}
+          <div>
+            <label>Store default (opsional)</label>
+            <select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
+              <option value="">— dari kolom CSV —</option>
+              {stores.map((l) => (<option key={l.location_id} value={l.location_id}>{l.name}</option>))}
+            </select>
+          </div>
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>{locInfo}</p>
       </div>
@@ -238,9 +279,9 @@ export default function UploadFile({ role }) {
           <button className="btn btn-ghost btn-sm" onClick={downloadTemplate}>Unduh template CSV</button>
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>
-          Kolom yang dibaca: <code>sku</code>, <code>qty</code>, <code>sale_at_price</code> (wajib);
-          <code>discount</code>, <code>retail_price</code>, <code>txn_date</code> (opsional).
-          Harga dianggap rupiah bulat. Kalau harga jual kosong, dipakai harga retail.
+          Kolom yang dibaca: <code>channel</code>, <code>sku</code>, <code>qty</code>, <code>sale_at_price</code> (wajib);
+          <code>store</code> (wajib untuk channel offline), <code>discount</code>, <code>retail_price</code>, <code>txn_date</code> (opsional).
+          Channel & store dicocokkan dari nama/kode. Online ambil stok dari lokasi channel; offline dari store di baris itu. Kalau harga jual kosong, dipakai harga retail.
         </p>
         {parseErr && <div className="err small" style={{ marginTop: 8 }}>{parseErr}</div>}
       </div>
@@ -263,6 +304,8 @@ export default function UploadFile({ role }) {
                     <th style={{ padding: "10px 12px" }}>Status</th>
                     <th style={{ padding: "10px 12px" }}>SKU</th>
                     <th style={{ padding: "10px 12px" }}>Produk</th>
+                    <th style={{ padding: "10px 12px" }}>Channel</th>
+                    <th style={{ padding: "10px 12px" }}>Lokasi</th>
                     <th style={{ padding: "10px 12px" }} className="num">Qty</th>
                     <th style={{ padding: "10px 12px" }} className="num">Harga jual</th>
                     <th style={{ padding: "10px 12px" }} className="num">Diskon</th>
@@ -279,6 +322,8 @@ export default function UploadFile({ role }) {
                       </td>
                       <td style={{ padding: "8px 12px", fontSize: 12 }}>{r.sku}</td>
                       <td style={{ padding: "8px 12px" }} className="muted">{r.name}</td>
+                      <td style={{ padding: "8px 12px" }}>{r.channel_name || "—"}</td>
+                      <td style={{ padding: "8px 12px" }} className="muted">{r.loc_label || "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="num">{r.qty ?? "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="num">{r.price != null ? fmtIDR(r.price) : "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="num">{fmtIDR(r.disc || 0)}</td>
