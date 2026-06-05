@@ -9,6 +9,7 @@ import UploadFile from "./UploadFile.jsx";
 import AdminPanel from "./AdminPanel.jsx";
 import AnalisaAI from "./AnalisaAI.jsx";
 import RestockNotif from "./RestockNotif.jsx";
+import KolReport from "./KolReport.jsx";
 import Login from "./Login.jsx";
 import { hasConfig, supabase } from "./supabaseClient.js";
 import { canView } from "./permissions.js";
@@ -70,6 +71,7 @@ export default function App() {
           if (view === "skus") return <SkuMaster role={role} />;
           if (view === "collection") return <CollectionPerf />;
           if (view === "restock") return <RestockNotif />;
+          if (view === "kol") return <KolReport />;
           if (view === "ai") return <AnalisaAI />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;
           if (view === "upload") return <UploadFile role={role} />;

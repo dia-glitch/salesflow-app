@@ -12,6 +12,7 @@ const VIEW = {
   dash: "all",
   collection: "all",
   restock: "all",
+  kol: "all",
   sales: "all",
   skus: "all",
   input: ["bi", "md_sales", "manager", "finance", "admin"],   // exclude RnD, Director, Store Ops
