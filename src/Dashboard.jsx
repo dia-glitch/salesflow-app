@@ -39,7 +39,7 @@ export default function Dashboard({ role }) {
     setLoading(true); setError("");
     try {
       const [f, ch, loc, tg] = await Promise.all([
-        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,qty,net_amount"),
+        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,qty,net_amount").neq("channel_id", "KOL"),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
         supabase.from("cf_locations").select("location_id,name,type"),
         supabase.from("sales_targets").select("month,target_key,target_amount"),

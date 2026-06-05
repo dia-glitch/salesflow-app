@@ -28,7 +28,7 @@ export default function ProductTab() {
       setLoading(true); setError("");
       try {
         const [fact, items, prods, prices, stock, loc, imgs] = await Promise.all([
-          supabase.from("cf_sales_fact").select("sku,qty,net_amount"),
+          supabase.from("cf_sales_fact").select("sku,qty,net_amount").neq("channel_id", "KOL"),
           supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code,category_lv1,category_lv2"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final"),

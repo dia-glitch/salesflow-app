@@ -33,7 +33,7 @@ export default function RestockNotif() {
       setLoading(true); setError("");
       try {
         const [fact, items, prods, stock, loc] = await Promise.all([
-          supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date,location_id"),
+          supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date,location_id").neq("channel_id", "KOL"),
           supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),

@@ -27,7 +27,7 @@ export default function CollectionPerf() {
       setLoading(true); setError("");
       try {
         const [fact, items, prods, prices, spks, stock, loc, imgs] = await Promise.all([
-          supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date"),
+          supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date").neq("channel_id", "KOL"),
           supabase.from("sku_items").select("sku,spk_id").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final,retail_price"),

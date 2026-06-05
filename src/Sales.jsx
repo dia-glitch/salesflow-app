@@ -44,6 +44,7 @@ export default function Sales({ role }) {
       const [f, ch, loc, si, prc] = await Promise.all([
         supabase.from("cf_sales_fact")
           .select("id,txn_date,channel_id,location_id,sku,qty,retail_price,sale_at_price,discount,net_amount,source_txn_id")
+          .neq("channel_id", "KOL")
           .order("txn_date", { ascending: false }).order("id", { ascending: false }),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
         supabase.from("cf_locations").select("location_id,name"),
