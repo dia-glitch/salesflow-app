@@ -16,33 +16,35 @@ export default function InputManual({ role }) {
   const [date, setDate] = useState(todayISO());
   const [channelId, setChannelId] = useState("");
   const [storeId, setStoreId] = useState("");
-  const [txnType, setTxnType] = useState("sale"); // sale | return | kol
-  const [kolName, setKolName] = useState("");
+  const [txnType, setTxnType] = useState("sale"); // sale | return
   const [rows, setRows] = useState([emptyRow(), emptyRow()]);
 
   const [saveMsg, setSaveMsg] = useState(null);
   const [procMsg, setProcMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [stock, setStock] = useState({});
 
   useEffect(() => {
     (async () => {
       try {
-        const [ch, loc, si, prc] = await Promise.all([
+        const [ch, loc, si, prc, soh] = await Promise.all([
           supabase.from("cf_sales_channels").select("channel_id,name,kind,fulfill_location_id,default_net_basis"),
           supabase.from("cf_locations").select("location_id,name,type,is_active"),
           supabase.from("sku_items").select("sku,spk_id,product_name_system,colour_lv2").limit(5000),
-          supabase.from("cogm_retail_prices").select("spk_id,retail_price,cogm_final,cogm"),
+          supabase.from("cogm_retail_prices").select("spk_id,retail_price"),
+          supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
         ]);
         for (const r of [ch, loc, si, prc]) if (r.error) throw r.error;
+        const smap = {};
+        (soh.data || []).forEach((s) => { smap[`${s.location_id}|${s.sku}`] = Number(s.qty) || 0; });
+        setStock(smap);
 
         const prcBySpk = {};
         (prc.data || []).forEach((p) => { if (p.spk_id) prcBySpk[p.spk_id] = p; });
         const list = (si.data || []).map((x) => {
-          const p = prcBySpk[x.spk_id] || {};
-          const retail = p.retail_price ?? "";
-          const cogm = p.cogm_final ?? p.cogm ?? 0;
+          const retail = prcBySpk[x.spk_id]?.retail_price ?? "";
           const name = `${x.product_name_system || ""} ${x.colour_lv2 || ""}`.trim();
-          return { sku: x.sku, label: `${name} (${x.sku})`, name, retail, cogm };
+          return { sku: x.sku, label: `${name} (${x.sku})`, name, retail };
         });
         const map = {};
         list.forEach((s) => (map[s.sku] = s));
@@ -65,11 +67,12 @@ export default function InputManual({ role }) {
   const channel = channels.find((c) => c.channel_id === channelId);
   const offline = channel && channel.kind === "offline";
   const stores = locations.filter((l) => l.type === "store");
-
-  const KOL_CH = "KOL";
-  const isKol = txnType === "kol";
-  const kolChannel = channels.find((c) => c.channel_id === KOL_CH);
-  const kolLoc = kolChannel?.fulfill_location_id || "WH-MAIN";
+  const fulfillLoc = channel?.fulfill_location_id || "";
+  const fulfillType = locations.find((l) => l.location_id === fulfillLoc)?.type;
+  const lockLoc = offline && fulfillLoc && fulfillType !== "store"; // channel offline dgn lokasi fulfillment khusus (mis. Damage Sales → DAMAGE) → lokasi terkunci, bukan pilih store
+  const lockLocName = locations.find((l) => l.location_id === fulfillLoc)?.name || fulfillLoc;
+  const activeLoc = lockLoc ? fulfillLoc : (offline ? storeId : (channel?.fulfill_location_id || ""));
+  const stockOf = (sku) => (activeLoc && sku && stock[`${activeLoc}|${sku}`] != null) ? stock[`${activeLoc}|${sku}`] : null;
 
   const setRow = (i, patch) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -85,47 +88,21 @@ export default function InputManual({ role }) {
   };
 
   const rowNet = (r) => (Number(r.price) || 0) * (Number(r.qty) || 0) - (Number(r.disc) || 0);
-  const total = useMemo(() => rows.reduce((a, r) => a + (r.sku ? (isKol ? 0 : rowNet(r)) : 0), 0), [rows, isKol]);
-  const marketingCost = useMemo(() => rows.reduce((a, r) => {
-    const m = skuMap[(r.sku || "").trim()];
-    return a + (r.sku ? (Number(r.qty) || 0) * (Number(m?.cogm) || 0) : 0);
-  }, 0), [rows, skuMap]);
+  const total = useMemo(() => rows.reduce((a, r) => a + (r.sku ? rowNet(r) : 0), 0), [rows]);
 
-  const locInfo = !channel ? "" : offline
-    ? `Channel toko → stok berkurang di store yang dipilih · basis net: ${channel.default_net_basis}`
+  const locInfo = !channel ? ""
+    : lockLoc ? `Channel ${channel.name} → stok berkurang di ${lockLocName} · basis net: ${channel.default_net_basis}`
+    : offline ? `Channel toko → stok berkurang di store yang dipilih · basis net: ${channel.default_net_basis}`
     : `Channel online → stok dari ${channel.fulfill_location_id} · basis net: ${channel.default_net_basis}`;
 
   function buildPayload() {
-    const loc = offline ? storeId : channel?.fulfill_location_id;
+    const loc = activeLoc;
     const stamp = Date.now();
     let idx = 0;
     return rows
       .filter((r) => r.sku.trim())
       .map((r) => {
         idx++;
-        if (isKol) {
-          const qty = Number(r.qty) || 0;
-          const retail = Number(r.retail) || 0;
-          const slug = ((kolName || "sample").trim().replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 30)) || "sample";
-          return {
-            source: "manual",
-            file_label: "kol-" + date + "-" + stamp,
-            processed: false,
-            imported_at: new Date().toISOString(),
-            raw: {
-              txn_date: date,
-              channel_id: KOL_CH,
-              location_id: kolLoc,
-              sku: r.sku.trim(),
-              qty,
-              retail_price: retail || null,
-              sale_at_price: retail,      // diskon 100% → net 0
-              discount: retail * qty,
-              txn_type: "sale",           // barang tetap keluar (stok berkurang)
-              source_txn_id: "KOL-" + slug + "-" + stamp + "-" + idx,
-            },
-          };
-        }
         return {
           source: "manual",
           file_label: "manual-" + date + "-" + stamp,
@@ -152,10 +129,6 @@ export default function InputManual({ role }) {
     const payload = buildPayload();
     if (payload.length === 0) {
       setSaveMsg({ type: "err", text: "Tidak ada baris dengan SKU." });
-      return;
-    }
-    if (isKol && !kolChannel) {
-      setSaveMsg({ type: "err", text: "Channel 'KOL' belum ada di Master Channel. Buat dulu channel KOL (fulfill WH-MAIN) sebelum input giveaway." });
       return;
     }
     const unknown = [...new Set(payload.map((p) => p.raw.sku).filter((s) => !skuMap[s]))];
@@ -213,16 +186,9 @@ export default function InputManual({ role }) {
             onClick={() => setTxnType("sale")}>Penjualan</button>
           <button className={"btn btn-sm " + (txnType === "return" ? "btn-primary" : "btn-ghost")}
             onClick={() => setTxnType("return")}>Retur</button>
-          <button className={"btn btn-sm " + (txnType === "kol" ? "btn-primary" : "btn-ghost")}
-            onClick={() => setTxnType("kol")}>KOL (free)</button>
           {txnType === "return" && (
             <span className="small" style={{ color: "var(--warn)" }}>
               Mode retur — stok kembali masuk &amp; omzet berkurang.
-            </span>
-          )}
-          {isKol && (
-            <span className="small" style={{ color: "var(--accent)" }}>
-              Mode KOL — barang keluar dicatat, nilai jual Rp 0 (diskon 100%).
             </span>
           )}
         </div>
@@ -231,46 +197,30 @@ export default function InputManual({ role }) {
             <label>Tanggal</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
-          {isKol ? (
-            <>
-              <div>
-                <label>Channel</label>
-                <input readOnly value="KOL / Sample (giveaway)" />
-              </div>
-              <div>
-                <label>KOL / penerima (opsional)</label>
-                <input value={kolName} placeholder="mis. @beautybyrara"
-                  onChange={(e) => setKolName(e.target.value)} />
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label>Channel</label>
-                <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
-                  {channels.map((c) => (
-                    <option key={c.channel_id} value={c.channel_id}>{c.name} ({c.kind})</option>
+          <div>
+            <label>Channel</label>
+            <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
+              {channels.map((c) => (
+                <option key={c.channel_id} value={c.channel_id}>{c.name} ({c.kind})</option>
+              ))}
+            </select>
+          </div>
+          {offline && (
+            <div>
+              <label>Store / lokasi</label>
+              {lockLoc ? (
+                <input value={lockLocName} readOnly disabled />
+              ) : (
+                <select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
+                  {stores.map((l) => (
+                    <option key={l.location_id} value={l.location_id}>{l.name}</option>
                   ))}
                 </select>
-              </div>
-              {offline && (
-                <div>
-                  <label>Store / lokasi</label>
-                  <select value={storeId} onChange={(e) => setStoreId(e.target.value)}>
-                    {stores.map((l) => (
-                      <option key={l.location_id} value={l.location_id}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
               )}
-            </>
+            </div>
           )}
         </div>
-        <p className="small muted" style={{ marginTop: 10 }}>
-          {isKol
-            ? `Barang keluar dicatat · nilai jual Rp 0 (diskon 100%) · stok dari ${kolLoc}${kolChannel ? "" : " · ⚠ channel KOL belum dibuat"}`
-            : locInfo}
-        </p>
+        <p className="small muted" style={{ marginTop: 10 }}>{locInfo}</p>
       </div>
 
       <div className="card">
@@ -280,6 +230,7 @@ export default function InputManual({ role }) {
             <tr>
               <th style={{ width: "26%" }}>SKU</th>
               <th style={{ width: "22%" }}>Produk</th>
+              <th style={{ width: "8%" }} className="num">Stok</th>
               <th style={{ width: "9%" }} className="num">Qty</th>
               <th style={{ width: "13%" }} className="num">Retail</th>
               <th style={{ width: "13%" }} className="num">Harga jual</th>
@@ -296,24 +247,15 @@ export default function InputManual({ role }) {
                     onChange={(e) => onSku(i, e.target.value)} />
                 </td>
                 <td className="small muted">{r.name}</td>
+                <td className="num">{(() => { const st = stockOf(r.sku); if (st == null) return "—"; const low = st <= 0 || st < (Number(r.qty) || 0); return <span style={low ? { color: "var(--bad)", fontWeight: 700 } : {}}>{st}</span>; })()}</td>
                 <td><input className="num" type="number" min="1" value={r.qty}
                   onChange={(e) => setRow(i, { qty: e.target.value })} /></td>
                 <td><input className="num" readOnly value={r.retail} /></td>
-                {isKol ? (
-                  <>
-                    <td className="num muted">0</td>
-                    <td className="num muted">100%</td>
-                    <td className="num">{fmtIDR(0)}</td>
-                  </>
-                ) : (
-                  <>
-                    <td><input className="num" type="number" value={r.price} placeholder="0"
-                      onChange={(e) => setRow(i, { price: e.target.value })} /></td>
-                    <td><input className="num" type="number" value={r.disc}
-                      onChange={(e) => setRow(i, { disc: e.target.value })} /></td>
-                    <td className="num">{fmtIDR(r.sku ? rowNet(r) : 0)}</td>
-                  </>
-                )}
+                <td><input className="num" type="number" value={r.price} placeholder="0"
+                  onChange={(e) => setRow(i, { price: e.target.value })} /></td>
+                <td><input className="num" type="number" value={r.disc}
+                  onChange={(e) => setRow(i, { disc: e.target.value })} /></td>
+                <td className="num">{fmtIDR(r.sku ? rowNet(r) : 0)}</td>
                 <td><button className="x" title="hapus"
                   onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}>×</button></td>
               </tr>
@@ -328,14 +270,7 @@ export default function InputManual({ role }) {
           <button className="btn btn-ghost btn-sm" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
             + Tambah baris
           </button>
-          <div>
-            {isKol && (
-              <span style={{ marginRight: 16, color: "var(--accent)" }}>
-                Biaya marketing (qty × COGM): <span className="total">{fmtIDR(marketingCost)}</span>
-              </span>
-            )}
-            Total net: <span className="total">{fmtIDR(total)}</span>
-          </div>
+          <div>Total net: <span className="total">{fmtIDR(total)}</span></div>
         </div>
       </div>
 
