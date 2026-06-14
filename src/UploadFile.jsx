@@ -24,12 +24,46 @@ const parseNum = (v) => {
   const n = Number(String(v).replace(/[^\d-]/g, "")); // asumsi rupiah bulat (tanpa desimal)
   return isNaN(n) ? null : n;
 };
+const pad2 = (n) => String(n).padStart(2, "0");
+const fmtYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const excelSerialToDate = (serial) => {
+  // Excel 1900 date system (25569 = jarak hari 1900→epoch 1970). Pakai komponen UTC
+  // lalu rakit ulang sebagai tanggal lokal supaya tidak geser akibat timezone.
+  const utc = new Date(Math.round((serial - 25569) * 86400 * 1000));
+  if (isNaN(utc)) return null;
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+};
 const parseDate = (v) => {
-  if (!v) return null;
-  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  if (v === null || v === undefined || v === "") return null;
+  // Date object (mis. dari XLSX cellDates)
+  if (v instanceof Date) return isNaN(v) ? null : fmtYMD(v);
+  // Angka serial Excel (mis. 46361) — JANGAN diperlakukan sebagai tahun
+  if (typeof v === "number" || /^\d+(\.\d+)?$/.test(String(v).trim())) {
+    const num = Number(v);
+    if (num > 20000 && num < 80000) { // rentang serial ~1954–2119
+      const d = excelSerialToDate(num);
+      return d ? fmtYMD(d) : null;
+    }
+  }
   const s = String(v).trim();
+  // Sudah ISO YYYY-MM-DD
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // Format Indonesia DD/MM/YYYY (pemisah / - .)
+  const id = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
+  if (id) {
+    let [, dd, mm, yy] = id;
+    yy = yy.length === 2 ? "20" + yy : yy;
+    const M = Number(mm), D = Number(dd);
+    if (M < 1 || M > 12 || D < 1 || D > 31) return null;
+    return `${yy}-${pad2(M)}-${pad2(D)}`;
+  }
+  // Fallback parser bawaan, tolak tahun ngawur
   const d = new Date(s);
-  return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  if (isNaN(d)) return null;
+  const y = d.getFullYear();
+  if (y < 1990 || y > 2100) return null;
+  return fmtYMD(d);
 };
 
 export default function UploadFile({ role }) {
@@ -114,7 +148,7 @@ export default function UploadFile({ role }) {
     setFileName(file.name);
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
       if (json.length === 0) { setParsed([]); setParseErr("File kosong atau tidak terbaca."); return; }
