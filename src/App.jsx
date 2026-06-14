@@ -11,6 +11,7 @@ import AnalisaAI from "./AnalisaAI.jsx";
 import RestockNotif from "./RestockNotif.jsx";
 import KolReport from "./KolReport.jsx";
 import Login from "./Login.jsx";
+import Panduan from "./Panduan.jsx";
 import { hasConfig, supabase } from "./supabaseClient.js";
 import { canView } from "./permissions.js";
 
@@ -73,6 +74,7 @@ export default function App() {
           if (view === "restock") return <RestockNotif />;
           if (view === "kol") return <KolReport />;
           if (view === "ai") return <AnalisaAI />;
+          if (view === "panduan") return <Panduan />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;
           if (view === "upload") return <UploadFile role={role} />;
           if (view === "input") return <InputManual role={role} />;

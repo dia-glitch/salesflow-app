@@ -10,6 +10,7 @@ export const ROLE_LABEL = {
 // "all" = semua role. Array = hanya role tersebut.
 const VIEW = {
   dash: "all",
+  panduan: "all",
   collection: "all",
   restock: "all",
   kol: "all",
