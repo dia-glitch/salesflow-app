@@ -13,13 +13,14 @@ import KolReport from "./KolReport.jsx";
 import Login from "./Login.jsx";
 import Panduan from "./Panduan.jsx";
 import { hasConfig, supabase } from "./supabaseClient.js";
-import { canView } from "./permissions.js";
+import { canView, setAccess, hasSalesflowAccess } from "./permissions.js";
 
 export default function App() {
   const [tab, setTab] = useState("dash");
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
+  const [accessReady, setAccessReady] = useState(false);
 
   useEffect(() => {
     if (!hasConfig) { setReady(true); return; }
@@ -34,9 +35,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) { setRole(null); return; }
-    supabase.from("profiles").select("role").eq("id", session.user.id).maybeSingle()
-      .then(({ data }) => setRole(data?.role || "manager"));
+    if (!session) { setRole(null); setAccessReady(false); setAccess(new Set(), new Set()); return; }
+    let active = true;
+    (async () => {
+      // role dari user_profiles (dipakai bersama semua app)
+      const { data: prof } = await supabase
+        .from("user_profiles").select("role").eq("id", session.user.id).maybeSingle();
+      if (!active) return;
+      const r = prof?.role || null;
+      setRole(r);
+      // hak akses dari role_access (SUMBER KEBENARAN, app='salesflow')
+      const view = new Set(), act = new Set();
+      if (r) {
+        const { data: rows } = await supabase.schema("public").from("role_access")
+          .select("resource, can_view, can_act").eq("app", "salesflow").eq("role", r);
+        for (const row of (rows || [])) {
+          if (row.can_view) view.add(row.resource);
+          if (row.can_act) act.add(row.resource);
+        }
+      }
+      if (!active) return;
+      setAccess(view, act);
+      setAccessReady(true);
+    })();
+    return () => { active = false; };
   }, [session]);
 
   async function logout() { await supabase.auth.signOut(); }
@@ -56,6 +78,21 @@ export default function App() {
   }
   if (!ready) return <div className="center-msg">Memuat…</div>;
   if (!session) return <Login />;
+  if (!accessReady) return <div className="center-msg">Memuat…</div>;
+  if (!hasSalesflowAccess()) {
+    return (
+      <div className="app">
+        <div className="main">
+          <div className="card err-card" style={{ textAlign: "center" }}>
+            Akun ini tidak punya akses ke SalesFlow. Hubungi admin kalau ini keliru.
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-ghost" onClick={logout}>Keluar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">

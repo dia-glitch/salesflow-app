@@ -1,41 +1,60 @@
-// Aturan akses SalesFlow — sumber tunggal untuk gating di UI.
-// (RLS database tetap jadi pengaman akhir di Langkah E.)
+// Aturan akses SalesFlow — DB-driven dari tabel role_access (app='salesflow').
+// Data di-load sekali di App.jsx lalu di-set via setAccess(); canView/canAct baca set itu.
+// (RLS database tetap pengaman akhir.)
 
 export const ROLE_LABEL = {
-  admin: "Admin", bi: "BI", md_sales: "MD Sales", finance: "Finance",
+  admin: "Admin", bi_sales: "BI Sales", md_sales: "MD Sales", finance: "Finance",
   manager: "Manager", director: "Director", rnd: "RnD", store_ops: "Store Ops",
+  designer: "Designer", mdp: "MDP", purchasing: "Purchasing", qc: "QC", spg: "SPG",
+  warehouse_material: "Warehouse Material", warehouse_inbound: "Warehouse Inbound",
+  warehouse_inventory: "Warehouse Inventory", warehouse_outbound: "Warehouse Outbound",
+  bi: "BI",
 };
 
-// Halaman yang boleh DILIHAT per role.
-// "all" = semua role. Array = hanya role tersebut.
-const VIEW = {
-  dash: "all",
-  panduan: "all",
-  collection: "all",
-  restock: "all",
-  kol: "all",
-  sales: "all",
-  skus: "all",
-  input: ["bi", "md_sales", "manager", "finance", "admin"],   // exclude RnD, Director, Store Ops
-  upload: ["bi", "md_sales", "manager", "finance", "admin"],   // exclude RnD, Director, Store Ops
-  ai: ["bi", "md_sales", "manager", "director", "finance", "admin"], // analitik AI: exclude RnD, Store Ops
-  admin: ["admin"],
+// tab UI -> slug resource di role_access (app='salesflow')
+const PAGE2RES = {
+  dash:       "dashboard",
+  collection: "collection",
+  restock:    "notifikasi_restock",
+  ai:         "analisa_ai",
+  sales:      "penjualan",
+  input:      "input_sales",
+  upload:     "upload_sales",
+  kol:        "kol_giveaway",
+  skus:       "sku_master",
+  admin:      "admin_panel",
+  panduan:    "panduan",
 };
 
-// Aksi (tulis) yang boleh DILAKUKAN per role.
-const ACT = {
-  penjualan: ["bi", "md_sales", "finance", "admin"], // mis. ekspor CSV
-  input: ["bi", "md_sales", "admin"],                // input + upload penjualan
-  sku: ["bi", "md_sales", "admin"],                  // edit SKU master (upload gambar)
-  target: ["bi", "md_sales", "admin"],               // set target penjualan
-  admin: ["admin"],                                  // kelola user/role
+// area aksi -> resource yang dicek can_act
+const AREA2RES = {
+  penjualan: ["penjualan"],                 // ekspor CSV di halaman Penjualan
+  input:     ["input_sales", "upload_sales"], // input + upload penjualan
+  sku:       ["sku_master"],                // edit SKU master
+  target:    ["dashboard"],                 // set target (Dashboard)
+  admin:     ["admin_panel"],               // kelola user/role
 };
 
-export function canView(role, page) {
-  const v = VIEW[page];
-  return v === "all" || (Array.isArray(v) && v.includes(role));
+let VIEW_SET = new Set();
+let ACT_SET = new Set();
+
+// Dipanggil dari App.jsx setelah role_access termuat.
+export function setAccess(view, act) {
+  VIEW_SET = view instanceof Set ? view : new Set(view || []);
+  ACT_SET = act instanceof Set ? act : new Set(act || []);
 }
 
-export function canAct(role, area) {
-  return Array.isArray(ACT[area]) && ACT[area].includes(role);
+// true kalau role punya minimal satu halaman yang boleh dilihat di SalesFlow.
+export function hasSalesflowAccess() {
+  return VIEW_SET.size > 0;
+}
+
+export function canView(_role, page) {
+  const res = PAGE2RES[page];
+  return res ? VIEW_SET.has(res) : false;
+}
+
+export function canAct(_role, area) {
+  const list = AREA2RES[area];
+  return Array.isArray(list) && list.some((r) => ACT_SET.has(r));
 }
