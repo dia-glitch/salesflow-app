@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, todayISO } from "./format.js";
 import { canAct } from "./permissions.js";
@@ -20,8 +20,8 @@ export default function InputManual({ role }) {
   const [rows, setRows] = useState([emptyRow(), emptyRow()]);
 
   const [saveMsg, setSaveMsg] = useState(null);
-  const [procMsg, setProcMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const submitLock = useRef(false); // cegah double-submit (double klik) sebelum re-render
   const [stock, setStock] = useState({});
 
   useEffect(() => {
@@ -124,8 +124,11 @@ export default function InputManual({ role }) {
       });
   }
 
-  async function save() {
+  // Satu aksi: simpan ke staging + langsung proses batch yang sama jadi penjualan final.
+  async function submitSale() {
+    if (submitLock.current || busy) return; // double klik tidak akan tercatat 2x
     setSaveMsg(null);
+
     const payload = buildPayload();
     if (payload.length === 0) {
       setSaveMsg({ type: "err", text: "Tidak ada baris dengan SKU." });
@@ -136,31 +139,62 @@ export default function InputManual({ role }) {
       setSaveMsg({ type: "err", text: "SKU tidak dikenal: " + unknown.join(", ") });
       return;
     }
+
+    // Notifikasi sebelum submit: stok lokasi 0 / tidak cukup (hanya untuk penjualan, bukan retur).
+    if (txnType === "sale") {
+      const issues = rows
+        .filter((r) => r.sku.trim())
+        .map((r) => {
+          const sku = r.sku.trim();
+          const st = stockOf(sku); // null = tidak ada record stok di lokasi ini
+          const eff = st == null ? 0 : st;
+          const q = Number(r.qty) || 0;
+          if (eff <= 0) return `• ${sku} — stok lokasi ${st == null ? "tidak ada (0)" : eff}`;
+          if (eff < q) return `• ${sku} — stok ${eff} < qty ${q}`;
+          return null;
+        })
+        .filter(Boolean);
+      if (issues.length) {
+        const ok = window.confirm(
+          "Perhatian — stok lokasi tidak mencukupi:\n\n" +
+            issues.join("\n") +
+            "\n\nTetap simpan penjualan?"
+        );
+        if (!ok) return;
+      }
+    }
+
+    submitLock.current = true;
     setBusy(true);
     try {
-      const { data, error } = await supabase.from("cf_sales_staging").insert(payload).select("id");
-      if (error) throw error;
-      setSaveMsg({ type: "ok", text: `Tersimpan ${data.length} baris ke staging (batch ${payload[0].file_label}).` });
+      const fileLabel = payload[0].file_label;
+      const { data: ins, error: insErr } = await supabase
+        .from("cf_sales_staging")
+        .insert(payload)
+        .select("id");
+      if (insErr) throw insErr;
+
+      // Proses HANYA batch ini (pakai file_label-nya) — tidak menyentuh staging lain.
+      const { data: pr, error: prErr } = await supabase.rpc("process_sales_staging", {
+        p_file_label: fileLabel,
+      });
+      if (prErr) throw prErr;
+
+      const r = pr || {};
+      setSaveMsg({
+        type: "ok",
+        text:
+          `Tersimpan ${ins.length} baris — diproses ${r.processed || 0} jadi penjualan` +
+          (r.quarantined ? `, ${r.quarantined} karantina` : "") +
+          (r.duplicate ? `, ${r.duplicate} duplikat` : "") +
+          ".",
+      });
       setRows([emptyRow()]);
     } catch (e) {
-      setSaveMsg({ type: "err", text: "Gagal menyimpan: " + (e.message || e) });
+      setSaveMsg({ type: "err", text: "Gagal menyimpan penjualan: " + (e.message || e) });
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function process() {
-    setProcMsg(null);
-    setBusy(true);
-    try {
-      const { data, error } = await supabase.rpc("process_sales_staging", { p_file_label: null });
-      if (error) throw error;
-      const r = data || {};
-      setProcMsg({ type: "ok", text: `Diproses: ${r.processed || 0} jadi penjualan, ${r.quarantined || 0} karantina, ${r.duplicate || 0} duplikat.` });
-    } catch (e) {
-      setProcMsg({ type: "err", text: "Gagal memproses: " + (e.message || e) });
-    } finally {
-      setBusy(false);
+      submitLock.current = false;
     }
   }
 
@@ -178,7 +212,7 @@ export default function InputManual({ role }) {
   return (
     <div>
       <h1 className="title">Input penjualan</h1>
-      <p className="lead">Tambah baris penjualan → simpan ke staging → proses jadi penjualan final + gerakan stok.</p>
+      <p className="lead">Tambah baris penjualan → simpan langsung jadi penjualan final + gerakan stok.</p>
 
       <div className="card">
         <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
@@ -277,15 +311,13 @@ export default function InputManual({ role }) {
       <div className="card">
         {allowed ? (
           <>
-            <button className="btn btn-primary" disabled={busy} onClick={save}>Simpan ke staging</button>
-            <button className="btn btn-ghost" disabled={busy} style={{ marginLeft: 8 }} onClick={process}>
-              Proses staging → penjualan
+            <button className="btn btn-primary" disabled={busy} onClick={submitSale}>
+              {busy ? "Menyimpan…" : "Simpan Penjualan"}
             </button>
             {saveMsg && <div className={"small " + saveMsg.type} style={{ marginTop: 12 }}>{saveMsg.text}</div>}
-            {procMsg && <div className={"small " + procMsg.type} style={{ marginTop: 8 }}>{procMsg.text}</div>}
           </>
         ) : (
-          <div className="small muted">Role Anda hanya bisa melihat halaman ini. Aksi simpan &amp; proses dinonaktifkan.</div>
+          <div className="small muted">Role Anda hanya bisa melihat halaman ini. Aksi simpan dinonaktifkan.</div>
         )}
       </div>
     </div>
