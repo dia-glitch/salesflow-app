@@ -245,12 +245,12 @@ export default function Dashboard({ role }) {
             <div style={{ height: 230, marginTop: 12 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyChart} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A8A192" }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A1A1AA" }} axisLine={false} tickLine={false} />
                   <Tooltip formatter={(v) => fmtShort(v)} labelFormatter={(l) => l}
                     cursor={{ fill: "rgba(0,0,0,.04)" }}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E7E0D2" }} />
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EAEAE8" }} />
                   <Bar dataKey="v" radius={[5, 5, 0, 0]}>
-                    {monthlyChart.map((x) => (<Cell key={x.mm} fill={x.mm === month ? "#BC4B2B" : "#D9CBB6"} />))}
+                    {monthlyChart.map((x) => (<Cell key={x.mm} fill={x.mm === month ? "#C4442A" : "#E8E8E6"} />))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -343,15 +343,15 @@ export default function Dashboard({ role }) {
                 <AreaChart data={m.daily} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
                   <defs>
                     <linearGradient id="dg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#BC4B2B" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#BC4B2B" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor="#C4442A" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#C4442A" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: "#A8A192" }} interval={2}
+                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: "#A1A1AA" }} interval={2}
                     axisLine={false} tickLine={false} />
                   <Tooltip formatter={(v) => fmtShort(v)} labelFormatter={(l) => "Tgl " + l}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E7E0D2" }} />
-                  <Area type="monotone" dataKey="v" stroke="#BC4B2B" strokeWidth={2} fill="url(#dg)" />
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EAEAE8" }} />
+                  <Area type="monotone" dataKey="v" stroke="#C4442A" strokeWidth={2} fill="url(#dg)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -361,8 +361,8 @@ export default function Dashboard({ role }) {
             <div className="card">
               <div className="section-label">Online vs Offline</div>
               <div style={{ marginTop: 12 }}>
-                <GBar nm="Online (marketplace + web)" val={m.byGroup.Online} total={grpTotal} color="#3D6B8A" />
-                <GBar nm="Offline (toko fisik)" val={m.byGroup.Offline} total={grpTotal} color="#BC4B2B" />
+                <GBar nm="Online (marketplace + web)" val={m.byGroup.Online} total={grpTotal} color="#17171A" />
+                <GBar nm="Offline (toko fisik)" val={m.byGroup.Offline} total={grpTotal} color="#C4442A" />
               </div>
             </div>
 
@@ -396,10 +396,10 @@ export default function Dashboard({ role }) {
             <div style={{ height: 230, marginTop: 12 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={yearData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A8A192" }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A1A1AA" }} axisLine={false} tickLine={false} />
                   <Tooltip formatter={(v) => fmtShort(v)} cursor={{ fill: "rgba(0,0,0,.04)" }}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #E7E0D2" }} />
-                  <Bar dataKey="total" name="Total" fill="#BC4B2B" radius={[5, 5, 0, 0]} />
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EAEAE8" }} />
+                  <Bar dataKey="total" name="Total" fill="#C4442A" radius={[5, 5, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -419,11 +419,11 @@ export default function Dashboard({ role }) {
             <div style={{ height: 230, marginTop: 12 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={yearData} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A8A192" }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A1A1AA" }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ContribTooltip />} cursor={{ fill: "rgba(0,0,0,.04)" }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="online" name="Online" stackId="a" fill="#3D6B8A" />
-                  <Bar dataKey="offline" name="Offline" stackId="a" fill="#BC4B2B" radius={[5, 5, 0, 0]} />
+                  <Bar dataKey="online" name="Online" stackId="a" fill="#17171A" />
+                  <Bar dataKey="offline" name="Offline" stackId="a" fill="#C4442A" radius={[5, 5, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -516,10 +516,10 @@ function ContribTooltip({ active, payload, label }) {
   const total = online + offline;
   const pct = (v) => (total > 0 ? Math.round((v / total) * 100) : 0);
   return (
-    <div style={{ fontSize: 12, background: "#fff", border: "1px solid #E7E0D2", borderRadius: 8, padding: "8px 10px" }}>
+    <div style={{ fontSize: 12, background: "#fff", border: "1px solid #EAEAE8", borderRadius: 8, padding: "8px 10px" }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: "#3D6B8A" }}>Online: {fmtShort(online)} · {pct(online)}%</div>
-      <div style={{ color: "#BC4B2B" }}>Offline: {fmtShort(offline)} · {pct(offline)}%</div>
+      <div style={{ color: "#17171A" }}>Online: {fmtShort(online)} · {pct(online)}%</div>
+      <div style={{ color: "#C4442A" }}>Offline: {fmtShort(offline)} · {pct(offline)}%</div>
       <div className="muted" style={{ marginTop: 3 }}>Total: {fmtShort(total)}</div>
     </div>
   );

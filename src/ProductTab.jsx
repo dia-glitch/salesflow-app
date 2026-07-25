@@ -196,7 +196,7 @@ export default function ProductTab() {
         <div className="section-label">Performa margin per koleksi</div>
         <div style={{ marginTop: 12 }}>
           {data.cogmColls.map((c) => (
-            <STBar key={c.key} label={c.key} sub={`rev ${fmtShort(c.rev)}`} pct={Math.max(0, Math.round(c.margin))} color="#3D6B8A" suffix="margin" />
+            <STBar key={c.key} label={c.key} sub={`rev ${fmtShort(c.rev)}`} pct={Math.max(0, Math.round(c.margin))} color="#17171A" suffix="margin" />
           ))}
         </div>
       </div>
@@ -207,7 +207,7 @@ export default function ProductTab() {
           <div style={{ marginTop: 12 }}>
             {data.sizes.length === 0 ? <p className="small muted">—</p> :
               data.sizes.map((s) => (
-                <STBar key={s.key} label={s.key} sub={`${fmtNum(s.sold)} terjual`} pct={s.st} color="#888780" />
+                <STBar key={s.key} label={s.key} sub={`${fmtNum(s.sold)} terjual`} pct={s.st} color="#71717A" />
               ))}
           </div>
         </div>

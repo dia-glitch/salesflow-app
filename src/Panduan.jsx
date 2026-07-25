@@ -15,11 +15,11 @@ const ICON = {
 
 // Warna badge per PIC (sumber kebenaran sekaligus dipakai di legenda)
 const PIC = {
-  "View": { bg: "#fff", fg: "#7C7568", border: "1px solid #E7E0D2" },
-  "BI Sales": { bg: "#E7EEF3", fg: "#305A73" },
+  "View": { bg: "#fff", fg: "#71717A", border: "1px solid #EAEAE8" },
+  "BI Sales": { bg: "#F2ECE0", fg: "#17171A" },
   "Marketing": { bg: "#F7ECD4", fg: "#8A5E12" },
-  "BI Creative Mktg": { bg: "#F1E1D8", fg: "#9A3D22" },
-  "Admin": { bg: "#EEEDFE", fg: "#3C3489" },
+  "BI Creative Mktg": { bg: "#F7E7E1", fg: "#9A3620" },
+  "Admin": { bg: "#EAE7E1", fg: "#3A3A3E" },
 };
 
 const GUIDE = [
@@ -76,7 +76,7 @@ function Ic({ d }) {
 function GuideCard({ c }) {
   const p = PIC[c.pic] || PIC["View"];
   return (
-    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8, ...(c.soon ? { background: "#FAF7F0", borderStyle: "dashed" } : {}) }}>
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 8, ...(c.soon ? { background: "#F7F7F5", borderStyle: "dashed" } : {}) }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <span style={{ fontFamily: "var(--serif)", fontSize: 17, fontWeight: 600, color: "var(--accent)" }}>{c.n}</span>
         <span style={{ color: "var(--sub)", display: "flex" }}><Ic d={ICON[c.icon]} /></span>
