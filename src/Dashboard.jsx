@@ -70,7 +70,7 @@ export default function Dashboard({ role }) {
     setLoading(true); setError("");
     try {
       const [f, ch, loc, tg, si, sp, so] = await Promise.all([
-        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,sku,qty,net_amount").neq("channel_id", "KOL"),
+        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,sku,qty,net_amount,retail_price,sale_at_price,discount").neq("channel_id", "KOL"),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
         supabase.from("cf_locations").select("location_id,name,type"),
         supabase.from("sales_targets").select("month,target_key,target_amount"),
@@ -120,6 +120,7 @@ export default function Dashboard({ role }) {
 
   const m = useMemo(() => {
     let sale = 0, qty = 0, onlineActual = 0;
+    let normalSale = 0, discSale = 0, normalQty = 0, discQty = 0;
     const byGroup = { Online: 0, Offline: 0 };
     const byLoc = {}, byDay = {}, storeActual = {};
     inMonth.forEach((r) => {
@@ -134,11 +135,19 @@ export default function Dashboard({ role }) {
       byLoc[ln] = (byLoc[ln] || 0) + net;
       const day = Number(r.txn_date.slice(8, 10));
       byDay[day] = (byDay[day] || 0) + net;
+      // komposisi harga normal vs diskon (hanya penjualan, retur diabaikan)
+      if (net > 0) {
+        const retail = Number(r.retail_price) || 0, saleP = Number(r.sale_at_price) || 0, disc = Number(r.discount) || 0;
+        const isDisc = disc > 0 || (retail > 0 && saleP < retail - 0.5);
+        if (isDisc) { discSale += net; discQty += Number(r.qty) || 0; }
+        else { normalSale += net; normalQty += Number(r.qty) || 0; }
+      }
     });
     const daily = [];
     for (let d = 1; d <= period.dim; d++) daily.push({ d, v: byDay[d] || 0 });
     const avgDaily = period.elapsed > 0 ? sale / period.elapsed : 0;
-    return { sale, qty, onlineActual, storeActual, byGroup, byLoc, daily, avgDaily, projection: avgDaily * period.dim };
+    return { sale, qty, onlineActual, storeActual, byGroup, byLoc, daily, avgDaily, projection: avgDaily * period.dim,
+      normalSale, discSale, normalQty, discQty };
   }, [inMonth, chMap, locMap, period]);
 
   // baris target yang SUDAH disubmit (target>0) untuk bulan terpilih
@@ -297,6 +306,46 @@ export default function Dashboard({ role }) {
               d={mom.pct == null ? "tidak ada data bulan lalu" : (mom.diff >= 0 ? "naik " : "turun ") + Math.abs(Math.round(mom.pct)) + "% dari bulan lalu"}
               color={mom.diff >= 0 ? "var(--good)" : "var(--bad)"} />
           </div>
+
+          {(() => {
+            const splitTot = m.normalSale + m.discSale;
+            const pctNormal = splitTot > 0 ? (m.normalSale / splitTot) * 100 : 0;
+            const pctDisc = splitTot > 0 ? 100 - pctNormal : 0;
+            return (
+              <div className="card">
+                <div className="section-label">Komposisi penjualan — harga normal vs diskon</div>
+                {splitTot === 0
+                  ? <p className="small muted" style={{ marginTop: 10 }}>Belum ada penjualan di periode ini.</p>
+                  : <>
+                    <div className="grid2" style={{ marginTop: 12, gap: 24, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 32 }}>
+                        <div>
+                          <div className="small muted">Harga normal</div>
+                          <div style={{ fontFamily: "var(--serif)", fontWeight: 700, fontSize: 32, lineHeight: 1.1, color: "var(--good)" }}>{Math.round(pctNormal)}%</div>
+                          <div className="small muted">{fmtIDR(m.normalSale)} · {fmtNum(m.normalQty)} pcs</div>
+                        </div>
+                        <div>
+                          <div className="small muted">Dari diskon</div>
+                          <div style={{ fontFamily: "var(--serif)", fontWeight: 700, fontSize: 32, lineHeight: 1.1, color: "var(--accent)" }}>{Math.round(pctDisc)}%</div>
+                          <div className="small muted">{fmtIDR(m.discSale)} · {fmtNum(m.discQty)} pcs</div>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ display: "flex", height: 16, borderRadius: 8, overflow: "hidden", background: "var(--surface2)" }}>
+                          {pctNormal > 0 && <div style={{ width: pctNormal + "%", background: "var(--good)" }} />}
+                          {pctDisc > 0 && <div style={{ width: pctDisc + "%", background: "var(--accent)" }} />}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7 }} className="small">
+                          <span style={{ color: "var(--good)", fontWeight: 600 }}>■ Normal (margin penuh)</span>
+                          <span style={{ color: "var(--accent)", fontWeight: 600 }}>■ Diskon (margin terkikis)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="small muted" style={{ marginTop: 12 }}>Makin besar porsi harga normal, makin sehat profit — penjualan diskon menekan margin. (Retur tidak dihitung di sini.)</p>
+                  </>}
+              </div>
+            );
+          })()}
 
           <div className="card">
             <div className="section-label">Tren penjualan bulanan (12 bulan terakhir)</div>
