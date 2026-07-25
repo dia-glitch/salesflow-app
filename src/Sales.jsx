@@ -41,7 +41,7 @@ export default function Sales({ role }) {
   async function load() {
     setLoading(true); setError("");
     try {
-      const [f, ch, loc, si, prc] = await Promise.all([
+      const [f, ch, loc, si, prc, prod] = await Promise.all([
         supabase.from("cf_sales_fact")
           .select("id,txn_date,channel_id,location_id,sku,qty,retail_price,sale_at_price,discount,net_amount,source_txn_id,order_ref")
           .neq("channel_id", "KOL")
@@ -50,16 +50,19 @@ export default function Sales({ role }) {
         supabase.from("cf_locations").select("location_id,name"),
         supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(5000),
         supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final"),
+        supabase.from("sku_products").select("spk_id,product_code"),
       ]);
-      for (const r of [f, ch, loc, si, prc]) if (r.error) throw r.error;
+      for (const r of [f, ch, loc, si, prc, prod]) if (r.error) throw r.error;
       const cm = {}; (ch.data || []).forEach((c) => (cm[c.channel_id] = c));
       const lm = {}; (loc.data || []).forEach((l) => (lm[l.location_id] = l.name));
       const prcBySpk = {};
       (prc.data || []).forEach((p) => { if (p.spk_id) prcBySpk[p.spk_id] = p; });
+      const codeBySpk = {};
+      (prod.data || []).forEach((p) => { if (p.spk_id) codeBySpk[p.spk_id] = p.product_code; });
       const sm = {};
       (si.data || []).forEach((x) => {
         const p = prcBySpk[x.spk_id] || {};
-        sm[x.sku] = { name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2), cogm: Number(p.cogm_final ?? p.cogm ?? 0) };
+        sm[x.sku] = { name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2), code: codeBySpk[x.spk_id] || "", cogm: Number(p.cogm_final ?? p.cogm ?? 0) };
       });
       setRows(f.data || []); setChMap(cm); setLocMap(lm); setSkuMap(sm);
     } catch (e) {
@@ -116,6 +119,7 @@ export default function Sales({ role }) {
         grup: chMap[r.channel_id]?.kind === "offline" ? "Offline" : "Online",
         store: locMap[r.location_id] || r.location_id,
         sku: r.sku,
+        kode_produk: skuMap[r.sku]?.code || "",
         produk: skuMap[r.sku]?.name || "",
         qty: (Number(r.qty) || 0) * (isRet ? -1 : 1),
         retail_price: r.retail_price,
@@ -207,6 +211,7 @@ export default function Sales({ role }) {
                 <th style={{ padding: "10px 12px" }}>Channel</th>
                 <th style={{ padding: "10px 12px" }}>Store</th>
                 <th style={{ padding: "10px 12px" }}>SKU</th>
+                <th style={{ padding: "10px 12px" }}>Kode Produk</th>
                 <th style={{ padding: "10px 12px" }}>Produk</th>
                 <th style={{ padding: "10px 12px" }} className="num">Qty</th>
                 <th style={{ padding: "10px 12px" }} className="num">Retail</th>
@@ -217,7 +222,7 @@ export default function Sales({ role }) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={13} className="center-msg">Tidak ada transaksi pada filter ini.</td></tr>
+                <tr><td colSpan={14} className="center-msg">Tidak ada transaksi pada filter ini.</td></tr>
               ) : (
                 filtered.slice(0, 500).map((r) => {
                   const isRet = (Number(r.net_amount) || 0) < 0;
@@ -234,6 +239,7 @@ export default function Sales({ role }) {
                     <td style={{ padding: "9px 12px" }} className="strong">{chMap[r.channel_id]?.name || r.channel_id}</td>
                     <td style={{ padding: "9px 12px" }} className="strong">{locMap[r.location_id] || r.location_id}</td>
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.sku}</td>
+                    <td style={{ padding: "9px 12px", fontSize: 12 }} className="strong">{skuMap[r.sku]?.code || <span className="muted">—</span>}</td>
                     <td style={{ padding: "9px 12px" }} className="strong">{skuMap[r.sku]?.name || ""}</td>
                     <td style={{ padding: "9px 12px" }} className="num">{(Number(r.qty) || 0) * (isRet ? -1 : 1)}</td>
                     <td style={{ padding: "9px 12px" }} className="num muted">{fmtIDR(r.retail_price)}</td>
