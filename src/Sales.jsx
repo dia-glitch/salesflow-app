@@ -227,7 +227,7 @@ export default function Sales({ role }) {
                 filtered.slice(0, 500).map((r) => {
                   const isRet = (Number(r.net_amount) || 0) < 0;
                   return (
-                  <tr key={r.id}>
+                  <tr key={r.id} style={isRet ? { background: "var(--bad-soft)" } : undefined}>
                     <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }} className="muted">{r.txn_date}</td>
                     <td style={{ padding: "9px 12px" }}>
                       <span className="pill" style={{ background: isRet ? "var(--bad-soft)" : "var(--good-soft)", color: isRet ? "var(--bad)" : "var(--good)" }}>
