@@ -276,26 +276,45 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
 
 /* ---------------- Detail Order ---------------- */
 function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
+  const [ord, setOrd] = useState(order);
   const [lines, setLines] = useState(null);
-  const [inv, setInv] = useState(null);
-  const [pays, setPays] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [paysByInv, setPaysByInv] = useState({});
   const [ship, setShip] = useState({});      // line_id -> qty kirim
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
   async function reload() {
-    const [lnRes, ivRes] = await Promise.all([
+    const [ordRes, lnRes, ivRes] = await Promise.all([
+      supabase.from("sf_do_orders").select("*").eq("id", order.id).single(),
       supabase.from("sf_do_order_lines").select("*").eq("order_id", order.id).order("sku"),
-      supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).maybeSingle(),
+      supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).order("created_at"),
     ]);
+    if (ordRes.data) setOrd(ordRes.data);
     setLines(lnRes.data || []);
-    setInv(ivRes.data || null);
-    if (ivRes.data) {
-      const { data: p } = await supabase.from("sf_do_payments").select("*").eq("invoice_id", ivRes.data.id).order("paid_at");
-      setPays(p || []);
-    } else setPays([]);
+    const invs = ivRes.data || [];
+    setInvoices(invs);
+    if (invs.length) {
+      const { data: p } = await supabase.from("sf_do_payments").select("*").in("invoice_id", invs.map((i) => i.id)).order("paid_at");
+      const map = {}; (p || []).forEach((x) => { (map[x.invoice_id] = map[x.invoice_id] || []).push(x); });
+      setPaysByInv(map);
+    } else setPaysByInv({});
   }
   useEffect(() => { reload(); }, [order.id]);
+
+  const deliveredValue = (lines || []).reduce((s, l) => s + Number(l.unit_price || 0) * Number(l.qty_fulfilled || 0), 0);
+  const anyRemaining = (lines || []).some((l) => Number(l.qty_order) - Number(l.qty_fulfilled) > 0);
+  const active = ord.status !== "cancelled" && ord.status !== "fulfilled" && ord.status !== "closed";
+
+  async function closeOrder() {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      await supabase.from("sf_do_orders").update({ status: "closed" }).eq("id", order.id);
+      setMsg({ t: "ok", m: "Order ditutup — sisa yang belum terkirim dibatalkan (stok tidak berubah)." });
+      await reload(); onChange();
+    } catch (e) { setMsg({ t: "err", m: "Gagal tutup order: " + (e.message || "") }); } finally { setBusy(false); }
+  }
 
   async function doFulfill() {
     if (busy) return;
@@ -320,7 +339,7 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: 17 }}>{order.order_no}</div>
-            <div className="small muted">{custName} · {order.order_date} · <OStatus s={order.status} /></div>
+            <div className="small muted">{custName} · {order.order_date} · <OStatus s={ord.status} /></div>
           </div>
           <button className="btn btn-ghost" onClick={onClose}>Tutup</button>
         </div>
@@ -333,13 +352,13 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
             <thead><tr>
               <th>SKU</th><th>Produk</th><th className="num">Order</th><th className="num">Terkirim</th>
               <th className="num">Sisa</th><th className="num">Stok WH</th><th className="num">Harga/unit</th>
-              {canDo && order.status !== "cancelled" && order.status !== "fulfilled" && <th className="num">Kirim</th>}
+              {canDo && active && <th className="num">Kirim</th>}
             </tr></thead>
             <tbody>
               {lines.map((l) => {
                 const sisa = Number(l.qty_order) - Number(l.qty_fulfilled);
                 const stok = stockWh[l.sku] ?? 0;
-                const canShip = canDo && order.status !== "cancelled" && order.status !== "fulfilled";
+                const canShip = canDo && active;
                 return (
                   <tr key={l.id}>
                     <td style={{ fontSize: 12 }}>{l.sku}</td>
@@ -363,132 +382,183 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
             </tbody>
           </table>
         </div>
-        {canDo && order.status !== "cancelled" && order.status !== "fulfilled" && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        {canDo && active && (
+          <div style={{ display: "flex", justifyContent: anyRemaining ? "space-between" : "flex-end", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
+            {anyRemaining && <button className="btn btn-ghost" onClick={closeOrder} disabled={busy}>Tutup order (batalkan sisa)</button>}
             <button className="btn btn-primary" onClick={doFulfill} disabled={busy}>{busy ? "Memproses…" : "Kirim dari WH-Main"}</button>
           </div>
         )}
 
         {/* Invoice + pembayaran */}
-        <InvoicePanel order={order} inv={inv} pays={pays} canDo={canDo} onChange={() => { reload(); onChange(); }} />
+        <InvoicePanel order={ord} invoices={invoices} paysByInv={paysByInv} deliveredValue={deliveredValue}
+          orderClosed={ord.status === "closed" || ord.status === "fulfilled"} canDo={canDo}
+          onChange={() => { reload(); onChange(); }} />
       </div>
     </div>
   );
 }
 
-/* ---------------- Invoice + Pembayaran ---------------- */
-function InvoicePanel({ order, inv, pays, canDo, onChange }) {
+/* ---------------- Invoice (bertahap) + Pembayaran ---------------- */
+function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed, canDo, onChange }) {
   const [type, setType] = useState("full");
   const [dpPct, setDpPct] = useState("");
   const [due, setDue] = useState("");
-  const [payAmt, setPayAmt] = useState("");
-  const [method, setMethod] = useState("transfer");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  async function issue() {
+  const dpInv = invoices.find((i) => i.type === "dp");
+  const fullInv = invoices.find((i) => i.type === "full");
+  const settleInv = invoices.find((i) => i.type === "settlement");
+  const dpPaid = dpInv ? Number(dpInv.paid_amount) : 0;
+  const settleAmount = Math.max(0, deliveredValue - dpPaid);
+  const dpNominal = Math.round(order.total * (Number(dpPct) || 0) / 100);
+
+  async function issueFirst() {
     if (busy) return;
+    const isDp = type === "dp";
+    const amount = isDp ? dpNominal : order.total;
+    if (isDp && amount <= 0) { setMsg({ t: "err", m: "Isi DP % dulu." }); return; }
     setBusy(true); setMsg(null);
     try {
-      const dpAmt = type === "dp" ? Math.round(order.total * (Number(dpPct) || 0) / 100) : 0;
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: "INV-" + order.order_no, type,
-        total: order.total, dp_amount: dpAmt, paid_amount: 0, balance: order.total,
-        status: "issued", due_date: due || null,
+        order_id: order.id, invoice_no: (isDp ? "INV-DP-" : "INV-") + order.order_no, type: isDp ? "dp" : "full",
+        total: amount, dp_amount: isDp ? amount : 0, paid_amount: 0, balance: amount, status: "issued", due_date: due || null,
       });
       if (error) throw error;
-      await supabase.from("sf_do_orders").update({ status: order.status === "draft" ? "confirmed" : order.status }).eq("id", order.id);
+      if (order.status === "draft") await supabase.from("sf_do_orders").update({ status: "confirmed" }).eq("id", order.id);
       onChange();
     } catch (e) { setMsg({ t: "err", m: "Gagal terbitkan invoice: " + (e.message || "") }); } finally { setBusy(false); }
   }
 
-  async function addPayment() {
-    if (busy || !inv) return;
-    const amt = Number(payAmt) || 0;
-    if (amt <= 0) { setMsg({ t: "err", m: "Nominal pembayaran tidak valid." }); return; }
+  async function issueSettlement() {
+    if (busy) return;
+    if (settleAmount <= 0) { setMsg({ t: "err", m: "Tidak ada sisa untuk ditagih (DP sudah menutupi barang terkirim)." }); return; }
     setBusy(true); setMsg(null);
     try {
-      const paid = Number(inv.paid_amount) + amt;
-      const balance = Math.max(0, Number(inv.total) - paid);
-      const kind = paid < Number(inv.total) ? "dp" : "settlement";
-      const { error } = await supabase.from("sf_do_payments").insert({ invoice_id: inv.id, amount: amt, method, kind });
+      const { error } = await supabase.from("sf_do_invoices").insert({
+        order_id: order.id, invoice_no: "INV-LNS-" + order.order_no, type: "settlement",
+        total: settleAmount, dp_amount: 0, paid_amount: 0, balance: settleAmount, status: "issued", due_date: null,
+      });
       if (error) throw error;
-      const status = balance <= 0 ? "paid" : "dp_paid";
-      await supabase.from("sf_do_invoices").update({ paid_amount: paid, balance, status }).eq("id", inv.id);
-      setPayAmt(""); onChange();
-    } catch (e) { setMsg({ t: "err", m: "Gagal catat pembayaran: " + (e.message || "") }); } finally { setBusy(false); }
-  }
-
-  async function submitFinance() {
-    if (busy || !inv) return;
-    setBusy(true);
-    try { await supabase.from("sf_do_invoices").update({ status: "submitted", submitted_at: new Date().toISOString() }).eq("id", inv.id); onChange(); }
-    finally { setBusy(false); }
+      onChange();
+    } catch (e) { setMsg({ t: "err", m: "Gagal terbitkan pelunasan: " + (e.message || "") }); } finally { setBusy(false); }
   }
 
   return (
     <div className="card">
       <div className="section-label">Invoice & Pembayaran</div>
       {msg && <div className="small err" style={{ marginTop: 8 }}>{msg.m}</div>}
-      {!inv ? (
-        canDo ? (
-          <div style={{ marginTop: 12 }}>
-            <div className="grid3">
-              <div>
-                <label>Tipe invoice</label>
-                <select value={type} onChange={(e) => setType(e.target.value)}>
-                  <option value="full">Full payment</option>
-                  <option value="dp">DP (uang muka)</option>
-                </select>
-              </div>
-              {type === "dp" && (
-                <div>
-                  <label>DP %</label>
-                  <input type="number" min="0" max="100" value={dpPct} onChange={(e) => setDpPct(e.target.value)} placeholder="mis. 50" />
-                  <div className="small muted" style={{ marginTop: 4 }}>= {fmtIDR(Math.round(order.total * (Number(dpPct) || 0) / 100))} · sisa {fmtIDR(order.total - Math.round(order.total * (Number(dpPct) || 0) / 100))}</div>
-                </div>
-              )}
-              <div><label>Jatuh tempo (opsional)</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={issue} disabled={busy}>Terbitkan Invoice · {fmtIDR(order.total)}</button>
-            </div>
-          </div>
-        ) : <p className="small muted" style={{ marginTop: 10 }}>Belum ada invoice.</p>
-      ) : (
+
+      {/* terbitkan invoice pertama (Full atau DP) */}
+      {invoices.length === 0 && (canDo ? (
         <div style={{ marginTop: 12 }}>
-          <div className="grid3" style={{ marginBottom: 12 }}>
-            <div className="kpi"><div className="l">Total invoice</div><div className="v" style={{ fontSize: 22 }}>{fmtIDR(inv.total)}</div><div className="d muted">{inv.invoice_no} · {inv.type === "dp" ? "DP" : "Full"}</div></div>
-            <div className="kpi"><div className="l">Sudah dibayar</div><div className="v" style={{ fontSize: 22, color: "var(--good)" }}>{fmtIDR(inv.paid_amount)}</div><div className="d"><IStatus s={inv.status} /></div></div>
-            <div className="kpi"><div className="l">Sisa tagihan</div><div className="v" style={{ fontSize: 22, color: inv.balance > 0 ? "var(--accent)" : "var(--good)" }}>{fmtIDR(inv.balance)}</div>{inv.due_date && <div className="d muted">jatuh tempo {inv.due_date}</div>}</div>
+          <div className="grid3">
+            <div>
+              <label>Tipe invoice</label>
+              <select value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="full">Full payment</option>
+                <option value="dp">DP (uang muka)</option>
+              </select>
+            </div>
+            {type === "dp" && (
+              <div>
+                <label>DP %</label>
+                <input type="number" min="0" max="100" value={dpPct} onChange={(e) => setDpPct(e.target.value)} placeholder="mis. 50" />
+                <div className="small muted" style={{ marginTop: 4 }}>tagih {fmtIDR(dpNominal)} dari total {fmtIDR(order.total)}</div>
+              </div>
+            )}
+            <div><label>Jatuh tempo (opsional)</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
           </div>
+          <div style={{ marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={issueFirst} disabled={busy}>
+              {type === "dp" ? "Terbitkan Invoice DP · " + fmtIDR(dpNominal) : "Terbitkan Invoice · " + fmtIDR(order.total)}
+            </button>
+          </div>
+        </div>
+      ) : <p className="small muted" style={{ marginTop: 10 }}>Belum ada invoice.</p>)}
 
-          {pays.length > 0 && (
-            <table style={{ marginBottom: 12 }}>
-              <thead><tr><th>Tanggal</th><th>Jenis</th><th>Metode</th><th className="num">Nominal</th></tr></thead>
-              <tbody>{pays.map((p) => (
-                <tr key={p.id}><td>{p.paid_at}</td><td>{p.kind === "dp" ? "DP" : "Pelunasan"}</td><td>{p.method || "—"}</td><td className="num strong">{fmtIDR(p.amount)}</td></tr>
-              ))}</tbody>
-            </table>
-          )}
+      {/* daftar invoice yang sudah ada */}
+      {invoices.map((inv) => (
+        <InvoiceCard key={inv.id} inv={inv} pays={paysByInv[inv.id] || []} canDo={canDo} onChange={onChange} />
+      ))}
 
-          {canDo && inv.balance > 0 && inv.status !== "submitted" && (
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div><label>Catat pembayaran</label><input type="number" min="0" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} placeholder="nominal" style={{ width: 160 }} /></div>
-              <div><label>Metode</label><select value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: 130 }}><option value="transfer">Transfer</option><option value="cash">Cash</option><option value="other">Lainnya</option></select></div>
-              <button className="btn btn-primary" onClick={addPayment} disabled={busy}>Tambah</button>
+      {/* terbitkan pelunasan setelah barang dikirim & order selesai/ditutup */}
+      {canDo && dpInv && !fullInv && !settleInv && (
+        orderClosed ? (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            <div className="small muted" style={{ marginBottom: 8 }}>
+              Barang terkirim <b style={{ color: "var(--ink)" }}>{fmtIDR(deliveredValue)}</b> − DP dibayar {fmtIDR(dpPaid)} = <b style={{ color: "var(--accent)" }}>{fmtIDR(settleAmount)}</b>
             </div>
-          )}
+            <button className="btn btn-primary" onClick={issueSettlement} disabled={busy || settleAmount <= 0}>Terbitkan Invoice Pelunasan · {fmtIDR(settleAmount)}</button>
+          </div>
+        ) : (
+          <p className="small muted" style={{ marginTop: 12 }}>Invoice pelunasan bisa diterbitkan setelah barang dikirim & order ditutup/selesai — dihitung dari nilai barang terkirim − DP.</p>
+        )
+      )}
+    </div>
+  );
+}
 
-          {canDo && inv.status !== "submitted" && (
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-              <button className="btn btn-ghost" onClick={submitFinance} disabled={busy}>Submit Invoice ke Finance</button>
-              <span className="small muted" style={{ marginLeft: 10 }}>Tandai siap dioper ke app Finance.</span>
-            </div>
-          )}
-          {inv.status === "submitted" && <p className="small muted" style={{ marginTop: 12 }}>✓ Invoice sudah di-submit ke Finance.</p>}
+/* satu kartu invoice: ringkasan + pembayaran + submit finance */
+function InvoiceCard({ inv, pays, canDo, onChange }) {
+  const [payAmt, setPayAmt] = useState("");
+  const [method, setMethod] = useState("transfer");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const typeLabel = inv.type === "dp" ? "DP" : inv.type === "settlement" ? "Pelunasan" : "Full";
+
+  async function addPayment() {
+    if (busy) return;
+    const amt = Number(payAmt) || 0;
+    if (amt <= 0) { setMsg({ m: "Nominal tidak valid." }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const paid = Number(inv.paid_amount) + amt;
+      const balance = Math.max(0, Number(inv.total) - paid);
+      const status = balance <= 0 ? "paid" : "dp_paid";
+      const { error } = await supabase.from("sf_do_payments").insert({ invoice_id: inv.id, amount: amt, method, kind: inv.type === "dp" ? "dp" : "settlement" });
+      if (error) throw error;
+      await supabase.from("sf_do_invoices").update({ paid_amount: paid, balance, status }).eq("id", inv.id);
+      setPayAmt(""); onChange();
+    } catch (e) { setMsg({ m: "Gagal: " + (e.message || "") }); } finally { setBusy(false); }
+  }
+  async function submitFinance() {
+    if (busy) return; setBusy(true);
+    try { await supabase.from("sf_do_invoices").update({ status: "submitted", submitted_at: new Date().toISOString() }).eq("id", inv.id); onChange(); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+        <div><b>{inv.invoice_no}</b> <span className="pill" style={{ background: "var(--surface2)", color: "var(--sub)", marginLeft: 6 }}>{typeLabel}</span></div>
+        <IStatus s={inv.status} />
+      </div>
+      {msg && <div className="small err" style={{ marginBottom: 8 }}>{msg.m}</div>}
+      <div className="grid3" style={{ marginBottom: 10 }}>
+        <div className="kpi"><div className="l">Total</div><div className="v" style={{ fontSize: 20 }}>{fmtIDR(inv.total)}</div></div>
+        <div className="kpi"><div className="l">Dibayar</div><div className="v" style={{ fontSize: 20, color: "var(--good)" }}>{fmtIDR(inv.paid_amount)}</div></div>
+        <div className="kpi"><div className="l">Sisa</div><div className="v" style={{ fontSize: 20, color: inv.balance > 0 ? "var(--accent)" : "var(--good)" }}>{fmtIDR(inv.balance)}</div>{inv.due_date && <div className="d muted">jatuh tempo {inv.due_date}</div>}</div>
+      </div>
+      {pays.length > 0 && (
+        <table style={{ marginBottom: 10 }}>
+          <thead><tr><th>Tanggal</th><th>Metode</th><th className="num">Nominal</th></tr></thead>
+          <tbody>{pays.map((p) => <tr key={p.id}><td>{p.paid_at}</td><td>{p.method || "—"}</td><td className="num strong">{fmtIDR(p.amount)}</td></tr>)}</tbody>
+        </table>
+      )}
+      {canDo && inv.balance > 0 && inv.status !== "submitted" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div><label>Catat pembayaran</label><input type="number" min="0" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} placeholder="nominal" style={{ width: 150 }} /></div>
+          <div><label>Metode</label><select value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: 120 }}><option value="transfer">Transfer</option><option value="cash">Cash</option><option value="other">Lainnya</option></select></div>
+          <button className="btn btn-primary" onClick={addPayment} disabled={busy}>Tambah</button>
         </div>
       )}
+      {canDo && inv.status !== "submitted" && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+          <button className="btn btn-ghost btn-sm" onClick={submitFinance} disabled={busy}>Submit ke Finance</button>
+        </div>
+      )}
+      {inv.status === "submitted" && <p className="small muted" style={{ marginTop: 10 }}>✓ Sudah di-submit ke Finance.</p>}
     </div>
   );
 }
