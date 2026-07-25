@@ -14,6 +14,36 @@ const achColor = (pct) => pct >= 100 ? "var(--good)" : pct >= 70 ? "var(--warn)"
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const fmtMonthShort = (mm) => { const [y, mo] = mm.split("-").map(Number); return MONTHS_ID[mo - 1] + " " + String(y).slice(2); };
 
+// Lifecycle by launch date — kategori SAMA dengan ChannelFlow (Aging by Launch)
+const LIFE_BUCKETS = [
+  { key: "New", label: "New", color: "#2FA37C" },
+  { key: "Evergreen 1", label: "Evergreen 1", color: "#3E9E7E" },
+  { key: "Evergreen 2", label: "Evergreen 2", color: "#4A8FB0" },
+  { key: "Clearance 1", label: "Clearance 1", color: "#C4881A" },
+  { key: "Clearance 2", label: "Clearance 2", color: "#EF6C3B" },
+  { key: "Old", label: "Old", color: "#CE3F54" },
+  { key: "Upcoming", label: "Upcoming", color: "#868D9A" },
+];
+function monthsSince(launchVal, nowMs) {
+  const l = new Date(launchVal), n = new Date(nowMs);
+  let m = (n.getFullYear() - l.getFullYear()) * 12 + (n.getMonth() - l.getMonth());
+  if (n.getDate() < l.getDate()) m--;
+  return m;
+}
+function lifecycleOf(launchVal, nowMs) {
+  if (!launchVal) return "Tanpa launch date";
+  const t = new Date(launchVal).getTime();
+  if (isNaN(t)) return "Tanpa launch date";
+  if (t > nowMs) return "Upcoming";
+  const m = monthsSince(launchVal, nowMs);
+  if (m < 1) return "New";
+  if (m < 3) return "Evergreen 1";
+  if (m < 6) return "Evergreen 2";
+  if (m < 9) return "Clearance 1";
+  if (m < 12) return "Clearance 2";
+  return "Old";
+}
+
 export default function Dashboard({ role }) {
   const [section, setSection] = useState("sales");
 
@@ -24,6 +54,7 @@ export default function Dashboard({ role }) {
   const [locMap, setLocMap] = useState({});
   const [stores, setStores] = useState([]);
   const [targetsRaw, setTargetsRaw] = useState([]);
+  const [skuLaunch, setSkuLaunch] = useState({});   // sku -> launch_date (via collection)
 
   const [month, setMonth] = useState(thisMonth());
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -38,16 +69,23 @@ export default function Dashboard({ role }) {
   async function load() {
     setLoading(true); setError("");
     try {
-      const [f, ch, loc, tg] = await Promise.all([
-        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,qty,net_amount").neq("channel_id", "KOL"),
+      const [f, ch, loc, tg, si, sp, so] = await Promise.all([
+        supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,sku,qty,net_amount").neq("channel_id", "KOL"),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
         supabase.from("cf_locations").select("location_id,name,type"),
         supabase.from("sales_targets").select("month,target_key,target_amount"),
+        supabase.from("sku_items").select("sku,spk_id").limit(10000),
+        supabase.from("sku_products").select("spk_id,collection_code"),
+        supabase.from("spk_orders").select("collection_code,launch_date"),
       ]);
-      for (const r of [f, ch, loc, tg]) if (r.error) throw r.error;
+      for (const r of [f, ch, loc, tg, si, sp, so]) if (r.error) throw r.error;
       const cm = {}; (ch.data || []).forEach((c) => (cm[c.channel_id] = c));
       const lm = {}; (loc.data || []).forEach((l) => (lm[l.location_id] = l.name));
-      setFact(f.data || []); setChMap(cm); setLocMap(lm);
+      // sku -> launch_date lewat collection_code
+      const collBySpk = {}; (sp.data || []).forEach((p) => { collBySpk[p.spk_id] = p.collection_code; });
+      const launchByColl = {}; (so.data || []).forEach((o) => { if (o.collection_code && o.launch_date && !launchByColl[o.collection_code]) launchByColl[o.collection_code] = o.launch_date; });
+      const sl = {}; (si.data || []).forEach((x) => { const c = collBySpk[x.spk_id]; if (c && launchByColl[c]) sl[x.sku] = launchByColl[c]; });
+      setFact(f.data || []); setChMap(cm); setLocMap(lm); setSkuLaunch(sl);
       setStores((loc.data || []).filter((l) => l.type === "store"));
       setTargetsRaw(tg.data || []);
     } catch (e) {
@@ -168,6 +206,26 @@ export default function Dashboard({ role }) {
     });
     return months;
   }, [fact, chMap, year]);
+
+  // Penjualan periode terpilih per kategori lifecycle (umur sejak launch date)
+  const salesLifecycle = useMemo(() => {
+    const [yy, mm] = month.split("-").map(Number);
+    const now = new Date();
+    const asOf = (yy === now.getFullYear() && mm === now.getMonth() + 1)
+      ? now.getTime()
+      : new Date(yy, mm, 0, 23, 59, 59, 999).getTime(); // akhir bulan terpilih
+    const cat = {}; LIFE_BUCKETS.forEach((b) => (cat[b.key] = 0));
+    let noLaunch = 0, total = 0;
+    inMonth.forEach((r) => {
+      const net = Number(r.net_amount) || 0;
+      total += net;
+      const k = lifecycleOf(skuLaunch[r.sku], asOf);
+      if (k === "Tanpa launch date") { noLaunch += net; return; }
+      cat[k] += net;
+    });
+    const rows = LIFE_BUCKETS.map((b) => ({ ...b, val: cat[b.key], pct: total > 0 ? (cat[b.key] / total) * 100 : 0 }));
+    return { rows, total, noLaunch };
+  }, [inMonth, skuLaunch, month]);
 
   function draftFor(mm) {
     const map = {};
@@ -383,6 +441,7 @@ export default function Dashboard({ role }) {
             </div>
           </div>
 
+          <div className="grid2">
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <div className="section-label">Revenue bulanan {year} (month-on-month)</div>
@@ -428,6 +487,36 @@ export default function Dashboard({ role }) {
               </ResponsiveContainer>
             </div>
             <p className="small muted" style={{ marginTop: 8 }}>Bar bertumpuk: biru = online, terracotta = offline. Sepanjang {year}.</p>
+          </div>
+          </div>
+
+          <div className="card">
+            <div className="section-label">Penjualan per kategori lifecycle — {fmtMonthShort(month)}</div>
+            <p className="small muted" style={{ margin: "2px 0 0" }}>Penjualan (net) periode terpilih dikelompokkan per umur produk sejak launch date koleksi. Kategori sama dengan ChannelFlow (Aging by Launch).</p>
+            <div style={{ height: 240, marginTop: 12 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={salesLifecycle.rows} margin={{ top: 20, right: 6, left: 6, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#A1A1AA" }} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v, n, p) => [fmtIDR(v) + " · " + Math.round(p.payload.pct) + "%", "Penjualan"]} cursor={{ fill: "rgba(0,0,0,.04)" }}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EAEAE8" }} />
+                  <Bar dataKey="val" radius={[5, 5, 0, 0]}>
+                    {salesLifecycle.rows.map((b) => <Cell key={b.key} fill={b.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid4" style={{ marginTop: 12, gridTemplateColumns: "repeat(7, minmax(0,1fr))" }}>
+              {salesLifecycle.rows.map((b) => (
+                <div key={b.key} style={{ borderTop: `3px solid ${b.color}`, paddingTop: 8 }}>
+                  <div className="small muted" style={{ fontSize: 11 }}>{b.label}</div>
+                  <div style={{ fontFamily: "var(--serif)", fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{Math.round(b.pct)}%</div>
+                  <div className="small muted">{fmtShort(b.val)}</div>
+                </div>
+              ))}
+            </div>
+            {salesLifecycle.total === 0
+              ? <p className="small muted" style={{ marginTop: 10 }}>Belum ada penjualan di periode ini.</p>
+              : salesLifecycle.noLaunch !== 0 && <p className="small muted" style={{ marginTop: 10 }}>· {fmtIDR(salesLifecycle.noLaunch)} tanpa launch date (tidak dikategorikan).</p>}
           </div>
 
         </>
