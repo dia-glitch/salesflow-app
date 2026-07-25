@@ -43,7 +43,7 @@ export default function Sales({ role }) {
     try {
       const [f, ch, loc, si, prc] = await Promise.all([
         supabase.from("cf_sales_fact")
-          .select("id,txn_date,channel_id,location_id,sku,qty,retail_price,sale_at_price,discount,net_amount,source_txn_id")
+          .select("id,txn_date,channel_id,location_id,sku,qty,retail_price,sale_at_price,discount,net_amount,source_txn_id,order_ref")
           .neq("channel_id", "KOL")
           .order("txn_date", { ascending: false }).order("id", { ascending: false }),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
@@ -111,6 +111,7 @@ export default function Sales({ role }) {
         tanggal: r.txn_date,
         tipe: isRet ? "Retur" : "Jual",
         id_order: r.source_txn_id,
+        order_ref: r.order_ref || "",
         channel: chMap[r.channel_id]?.name || r.channel_id,
         grup: chMap[r.channel_id]?.kind === "offline" ? "Offline" : "Online",
         store: locMap[r.location_id] || r.location_id,
@@ -202,6 +203,7 @@ export default function Sales({ role }) {
                 <th style={{ padding: "10px 12px" }}>Tanggal</th>
                 <th style={{ padding: "10px 12px" }}>Tipe</th>
                 <th style={{ padding: "10px 12px" }}>ID order</th>
+                <th style={{ padding: "10px 12px" }}>No Order Ref</th>
                 <th style={{ padding: "10px 12px" }}>Channel</th>
                 <th style={{ padding: "10px 12px" }}>Store</th>
                 <th style={{ padding: "10px 12px" }}>SKU</th>
@@ -215,19 +217,20 @@ export default function Sales({ role }) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={12} className="center-msg">Tidak ada transaksi pada filter ini.</td></tr>
+                <tr><td colSpan={13} className="center-msg">Tidak ada transaksi pada filter ini.</td></tr>
               ) : (
                 filtered.slice(0, 500).map((r) => {
                   const isRet = (Number(r.net_amount) || 0) < 0;
                   return (
                   <tr key={r.id}>
-                    <td style={{ padding: "9px 12px" }} className="muted">{r.txn_date}</td>
+                    <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }} className="muted">{r.txn_date}</td>
                     <td style={{ padding: "9px 12px" }}>
                       <span className="pill" style={{ background: isRet ? "var(--bad-soft)" : "var(--good-soft)", color: isRet ? "var(--bad)" : "var(--good)" }}>
                         {isRet ? "Retur" : "Jual"}
                       </span>
                     </td>
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.source_txn_id}</td>
+                    <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.order_ref || <span className="muted">—</span>}</td>
                     <td style={{ padding: "9px 12px" }} className="strong">{chMap[r.channel_id]?.name || r.channel_id}</td>
                     <td style={{ padding: "9px 12px" }} className="strong">{locMap[r.location_id] || r.location_id}</td>
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.sku}</td>
