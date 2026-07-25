@@ -208,14 +208,23 @@ export default function UploadFile({ role }) {
 
   function downloadTemplate() {
     const sample = Object.keys(skuMap)[0] || "SKU-CONTOH";
-    const onlineCh = channels.find((c) => c.kind !== "offline");
-    const offlineCh = channels.find((c) => c.kind === "offline");
     const someStore = stores[0];
-    const lines = [
-      "channel,store,sku,qty,sale_at_price,discount,retail_price,order_ref,txn_date",
-      `${onlineCh?.name || "Online"},,${sample},1,395000,0,,ORDER-0001,${date}`,
-      `${offlineCh?.name || "Offline"},${someStore?.name || "Store Contoh"},${sample},1,395000,0,,,${date}`,
+    // CSV-safe: bungkus kalau ada koma/kutip
+    const cell = (v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const header = "channel,store,sku,qty,sale_at_price,discount,retail_price,order_ref,txn_date";
+    // satu baris contoh per channel terdaftar (nama channel PERSIS, biar tidak typo)
+    let n = 0;
+    const rows = channels.map((c) => {
+      const isOff = c.kind === "offline";
+      const storeCell = isOff ? (someStore?.name || "Store Contoh") : "";     // offline butuh store
+      const orderCell = isOff ? "" : `ORDER-${String(++n).padStart(4, "0")}`; // online biasanya ada no order
+      return [cell(c.name), cell(storeCell), sample, 1, 395000, 0, "", orderCell, date].join(",");
+    });
+    const body = rows.length ? rows : [
+      `Online,,${sample},1,395000,0,,ORDER-0001,${date}`,
+      `Offline,${someStore?.name || "Store Contoh"},${sample},1,395000,0,,,${date}`,
     ];
+    const lines = [header, ...body];
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -314,6 +323,7 @@ export default function UploadFile({ role }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
           <input type="file" accept=".csv,.xlsx,.xls" onChange={onFile} />
           <button className="btn btn-ghost btn-sm" onClick={downloadTemplate}>Unduh template CSV</button>
+          <span className="small muted">Template berisi 1 baris contoh untuk tiap channel ({channels.length}) — tinggal ganti sku/qty/harga, nama channel sudah pasti benar.</span>
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>
           Kolom yang dibaca: <code>channel</code>, <code>sku</code>, <code>qty</code>, <code>sale_at_price</code> (wajib);
