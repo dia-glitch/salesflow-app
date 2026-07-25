@@ -24,7 +24,7 @@ const GROUPS = [
     title: "Keuangan",
     items: [
       { k: "ar", label: "Penagihan AR", icon: "M5 3h11l4 4v14H5zM16 3v4h4M8 12h8M8 16h5M8 8h3" },
-      { k: "wholesale", label: "Pesanan Langsung", icon: "M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2Zm8 0a1 1 0 100-2 1 1 0 000 2Z" },
+      { k: "wholesale", label: "Direct Purchase", icon: "M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2Zm8 0a1 1 0 100-2 1 1 0 000 2Z" },
     ],
   },
   {

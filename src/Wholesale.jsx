@@ -31,48 +31,52 @@ const IStatus = ({ s }) => { const p = INV_PILL[s] || INV_PILL.issued; return <s
 export default function Wholesale({ role }) {
   const canDo = canAct(role, "wholesale_order");
   const canCust = canAct(role, "wholesale_customer");
-  const [view, setView] = useState("orders");   // 'orders' | 'customers'
+  const [tab, setTab] = useState("order");   // 'order'|'invoice'|'fulfillment'|'customers'
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   const [orders, setOrders] = useState([]);
-  const [invByOrder, setInvByOrder] = useState({});
+  const [invsByOrder, setInvsByOrder] = useState({});   // order_id -> [invoices]
+  const [aggByOrder, setAggByOrder] = useState({});     // order_id -> {qtyOrder,qtyFulfilled,delivered}
   const [customers, setCustomers] = useState([]);
-  const [skuList, setSkuList] = useState([]);    // {sku,name,code,retail}
-  const [whLoc, setWhLoc] = useState("");        // location_id WH-Main
-  const [stockWh, setStockWh] = useState({});    // sku -> qty di WH-Main
+  const [skuList, setSkuList] = useState([]);
+  const [whLoc, setWhLoc] = useState("");
+  const [stockWh, setStockWh] = useState({});
 
   const [creating, setCreating] = useState(false);
-  const [detail, setDetail] = useState(null);    // order dibuka
+  const [modal, setModal] = useState(null);   // {kind:'view'|'invoice'|'fulfill', order}
 
   async function load() {
     setLoading(true); setErr("");
     try {
-      const [ordRes, custRes, invRes, si, sp, prc, loc] = await Promise.all([
+      const [ordRes, custRes, invRes, lnRes, si, sp, prc, loc] = await Promise.all([
         supabase.from("sf_do_orders").select("*").order("order_date", { ascending: false }).order("created_at", { ascending: false }),
         supabase.from("sf_customers").select("*").order("name"),
-        supabase.from("sf_do_invoices").select("id,order_id,invoice_no,type,total,paid_amount,balance,status"),
+        supabase.from("sf_do_invoices").select("*"),
+        supabase.from("sf_do_order_lines").select("order_id,qty_order,qty_fulfilled,unit_price"),
         supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(10000),
         supabase.from("sku_products").select("spk_id,product_code"),
         supabase.from("cogm_retail_prices").select("spk_id,retail_price"),
         supabase.from("cf_locations").select("location_id,name,type"),
       ]);
-      for (const r of [ordRes, custRes, invRes, si, sp, prc, loc]) if (r.error) throw r.error;
+      for (const r of [ordRes, custRes, invRes, lnRes, si, sp, prc, loc]) if (r.error) throw r.error;
       const codeBySpk = {}; (sp.data || []).forEach((p) => (codeBySpk[p.spk_id] = p.product_code));
       const retBySpk = {}; (prc.data || []).forEach((p) => { if (p.spk_id) retBySpk[p.spk_id] = p.retail_price; });
-      const list = (si.data || []).map((x) => ({
-        sku: x.sku,
-        name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2),
-        code: codeBySpk[x.spk_id] || "",
-        retail: Number(retBySpk[x.spk_id] ?? 0) || 0,
-      }));
+      setSkuList((si.data || []).map((x) => ({
+        sku: x.sku, name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2),
+        code: codeBySpk[x.spk_id] || "", retail: Number(retBySpk[x.spk_id] ?? 0) || 0,
+      })));
+      const invMap = {}; (invRes.data || []).forEach((v) => { (invMap[v.order_id] = invMap[v.order_id] || []).push(v); });
+      const agg = {}; (lnRes.data || []).forEach((l) => {
+        const a = agg[l.order_id] = agg[l.order_id] || { qtyOrder: 0, qtyFulfilled: 0, delivered: 0 };
+        a.qtyOrder += Number(l.qty_order) || 0; a.qtyFulfilled += Number(l.qty_fulfilled) || 0;
+        a.delivered += (Number(l.unit_price) || 0) * (Number(l.qty_fulfilled) || 0);
+      });
       const wh = (loc.data || []).find((l) => l.type === "wh_main");
-      const whId = wh?.location_id || "";
-      const im = {}; (invRes.data || []).forEach((v) => (im[v.order_id] = v));
-      setOrders(ordRes.data || []); setCustomers(custRes.data || []); setInvByOrder(im);
-      setSkuList(list); setWhLoc(whId);
-      if (whId) {
-        const { data: soh } = await supabase.from("v_cf_stock_on_hand").select("sku,qty").eq("location_id", whId);
+      setOrders(ordRes.data || []); setCustomers(custRes.data || []);
+      setInvsByOrder(invMap); setAggByOrder(agg); setWhLoc(wh?.location_id || "");
+      if (wh?.location_id) {
+        const { data: soh } = await supabase.from("v_cf_stock_on_hand").select("sku,qty").eq("location_id", wh.location_id);
         const sm = {}; (soh || []).forEach((s) => (sm[s.sku] = Number(s.qty) || 0));
         setStockWh(sm);
       }
@@ -82,71 +86,156 @@ export default function Wholesale({ role }) {
 
   const custName = useMemo(() => { const m = {}; customers.forEach((c) => (m[c.id] = c.name)); return m; }, [customers]);
 
+  function derive(o) {
+    const invs = invsByOrder[o.id] || [];
+    const agg = aggByOrder[o.id] || { qtyOrder: 0, qtyFulfilled: 0, delivered: 0 };
+    const paidTotal = invs.reduce((s, i) => s + Number(i.paid_amount || 0), 0);
+    const balanceTotal = invs.reduce((s, i) => s + Number(i.balance || 0), 0);
+    const dpPaid = invs.filter((i) => i.type === "dp").reduce((s, i) => s + Number(i.paid_amount || 0), 0);
+    const hasFull = invs.some((i) => i.type === "full");
+    const hasDp = invs.some((i) => i.type === "dp");
+    const hasSettle = invs.some((i) => i.type === "settlement");
+    const closedOrDone = o.status === "closed" || o.status === "fulfilled";
+    const anyRemaining = agg.qtyOrder - agg.qtyFulfilled > 0;
+    const settleAmount = Math.max(0, agg.delivered - dpPaid);
+    const financeAction = o.status !== "cancelled" && (
+      invs.length === 0 || balanceTotal > 0 || (closedOrDone && hasDp && !hasFull && !hasSettle && settleAmount > 0)
+    );
+    const fulfillReady = o.status !== "cancelled" && !closedOrDone && anyRemaining && paidTotal > 0;
+    return { invs, agg, paidTotal, balanceTotal, financeAction, fulfillReady };
+  }
+
   if (loading) return <div className="center-msg">Memuat…</div>;
+
+  const invoiceQueue = orders.filter((o) => derive(o).financeAction);
+  const fulfillQueue = orders.filter((o) => derive(o).fulfillReady);
+  const TABS = [["order", "Order", "Sales"], ["invoice", "Invoice", "Finance"], ["fulfillment", "Fulfillment", "Warehouse"], ["customers", "Customer", ""]];
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <div className="title">Pesanan Langsung / Wholesale</div>
-          <div className="lead">Beli putus dari WH-Main · bisa pre-order · invoice Full/DP · diskon manual</div>
+          <div className="title">Direct Purchase</div>
+          <div className="lead">Beli putus dari WH-Main · alur estafet: Sales → Finance → Warehouse</div>
         </div>
-        <div style={{ display: "inline-flex", gap: 4, background: "var(--surface2)", padding: 5, borderRadius: 14 }}>
-          {[["orders", "Pesanan"], ["customers", "Customer"]].map(([k, l]) => (
-            <button key={k} onClick={() => { setView(k); setCreating(false); }}
-              style={{ border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-                background: view === k ? "var(--black)" : "transparent", color: view === k ? "#fff" : "var(--sub)" }}>{l}</button>
+        <div style={{ display: "inline-flex", gap: 4, background: "var(--surface2)", padding: 5, borderRadius: 14, flexWrap: "wrap" }}>
+          {TABS.map(([k, l, pic]) => (
+            <button key={k} onClick={() => { setTab(k); setCreating(false); }}
+              style={{ border: "none", borderRadius: 10, padding: "8px 15px", fontSize: 13, fontWeight: 700, cursor: "pointer", lineHeight: 1.1, textAlign: "center",
+                background: tab === k ? "var(--black)" : "transparent", color: tab === k ? "#fff" : "var(--sub)" }}>
+              {l}{pic && <div style={{ fontSize: 10, fontWeight: 700, opacity: .7 }}>{pic}</div>}
+            </button>
           ))}
         </div>
       </div>
 
       {err && <div className="card err-card" style={{ marginTop: 12 }}>{err}</div>}
 
-      {view === "customers" ? (
-        <Customers customers={customers} canEdit={canCust} onChange={load} />
-      ) : creating ? (
+      {tab === "customers" && <Customers customers={customers} canEdit={canCust} onChange={load} />}
+
+      {tab === "order" && (creating ? (
         <NewOrder skuList={skuList} customers={customers} whLoc={whLoc}
           onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); load(); }} />
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0" }}>
-            <span className="small muted">{orders.length} order</span>
+            <span className="small muted">{orders.length} order · antrian Sales</span>
             {canDo && <button className="btn btn-primary" onClick={() => setCreating(true)}>+ Buat Order</button>}
           </div>
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             {orders.length === 0 ? <div className="center-msg">Belum ada pesanan.</div> : (
               <table>
-                <thead><tr>
-                  <th>No Order</th><th>Customer</th><th>Tanggal</th><th className="num">Total</th>
-                  <th>Status</th><th>Invoice</th><th className="num">Sisa Tagihan</th><th></th>
-                </tr></thead>
+                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Total</th><th>Progres pipeline</th><th></th></tr></thead>
                 <tbody>
-                  {orders.map((o) => {
-                    const inv = invByOrder[o.id];
-                    return (
-                      <tr key={o.id}>
-                        <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
-                        <td className="strong">{custName[o.customer_id] || "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{o.order_date}</td>
-                        <td className="num" style={{ fontWeight: 700 }}>{fmtIDR(o.total)}</td>
-                        <td><OStatus s={o.status} /></td>
-                        <td>{inv ? <IStatus s={inv.status} /> : <span className="muted small">—</span>}</td>
-                        <td className="num">{inv ? fmtIDR(inv.balance) : "—"}</td>
-                        <td className="num"><button className="btn btn-ghost btn-sm" onClick={() => setDetail(o)}>Detail</button></td>
-                      </tr>
-                    );
-                  })}
+                  {orders.map((o) => (
+                    <tr key={o.id}>
+                      <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
+                      <td className="strong">{custName[o.customer_id] || "—"}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{fmtIDR(o.total)}</td>
+                      <td><PipelineChips o={o} d={derive(o)} /></td>
+                      <td className="num"><button className="btn btn-ghost btn-sm" onClick={() => setModal({ kind: "view", order: o })}>Lihat</button></td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}
           </div>
         </>
+      ))}
+
+      {tab === "invoice" && (
+        <div style={{ marginTop: 14 }}>
+          <p className="small muted" style={{ marginBottom: 12 }}>Antrian Finance — order yang butuh invoice / pembayaran / pelunasan.</p>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {invoiceQueue.length === 0 ? <div className="center-msg">Tidak ada order menunggu proses invoice.</div> : (
+              <table>
+                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Total</th><th className="num">Terbayar</th><th className="num">Sisa</th><th></th></tr></thead>
+                <tbody>
+                  {invoiceQueue.map((o) => { const d = derive(o); return (
+                    <tr key={o.id}>
+                      <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
+                      <td className="strong">{custName[o.customer_id] || "—"}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{fmtIDR(o.total)}</td>
+                      <td className="num">{fmtIDR(d.paidTotal)}</td>
+                      <td className="num" style={{ color: d.balanceTotal > 0 ? "var(--accent)" : undefined }}>{d.invs.length ? fmtIDR(d.balanceTotal) : <span className="muted">belum ada invoice</span>}</td>
+                      <td className="num"><button className="btn btn-primary btn-sm" onClick={() => setModal({ kind: "invoice", order: o })}>Proses</button></td>
+                    </tr>
+                  ); })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
 
-      {detail && (
-        <OrderDetail order={detail} custName={custName[detail.customer_id] || "—"} skuList={skuList}
-          stockWh={stockWh} canDo={canDo} onClose={() => setDetail(null)} onChange={() => { load(); }} />
+      {tab === "fulfillment" && (
+        <div style={{ marginTop: 14 }}>
+          <p className="small muted" style={{ marginBottom: 12 }}>Antrian Warehouse — order siap kirim (DP/invoice sudah dibayar).</p>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {fulfillQueue.length === 0 ? <div className="center-msg">Belum ada order siap kirim (menunggu pembayaran DP/invoice dari Finance).</div> : (
+              <table>
+                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Qty order</th><th className="num">Terkirim</th><th className="num">Sisa</th><th></th></tr></thead>
+                <tbody>
+                  {fulfillQueue.map((o) => { const d = derive(o); return (
+                    <tr key={o.id}>
+                      <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
+                      <td className="strong">{custName[o.customer_id] || "—"}</td>
+                      <td className="num">{fmtNum(d.agg.qtyOrder)}</td>
+                      <td className="num">{fmtNum(d.agg.qtyFulfilled)}</td>
+                      <td className="num" style={{ fontWeight: 700 }}>{fmtNum(d.agg.qtyOrder - d.agg.qtyFulfilled)}</td>
+                      <td className="num"><button className="btn btn-primary btn-sm" onClick={() => setModal({ kind: "fulfill", order: o })}>Kirim</button></td>
+                    </tr>
+                  ); })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
+
+      {modal?.kind === "view" && <OrderView order={modal.order} custName={custName[modal.order.customer_id] || "—"} onClose={() => setModal(null)} />}
+      {modal?.kind === "invoice" && <InvoiceModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
+      {modal?.kind === "fulfill" && <FulfillModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} stockWh={stockWh} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
+    </div>
+  );
+}
+
+/* chips progres pipeline (tab Order) */
+function PipelineChips({ o, d }) {
+  const chip = (state, label) => {
+    const map = { done: { bg: "var(--good-soft)", c: "var(--good)" }, now: { bg: "var(--accent-soft)", c: "var(--accent-ink)" }, pending: { bg: "var(--surface2)", c: "var(--faint)" } };
+    const s = map[state] || map.pending;
+    return <span className="pill" style={{ background: s.bg, color: s.c, fontSize: 10.5 }}>{label}</span>;
+  };
+  const orderState = o.status === "draft" ? "now" : o.status === "cancelled" ? "pending" : "done";
+  const invState = d.invs.length === 0 ? "pending" : d.financeAction ? "now" : "done";
+  const shipDone = o.status === "fulfilled" || o.status === "closed";
+  const shipState = shipDone ? "done" : d.fulfillReady ? "now" : "pending";
+  return (
+    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+      {chip(orderState, o.status === "draft" ? "Order (draft)" : "Order ✓")}
+      {chip(invState, invState === "done" ? "Invoice ✓" : "Invoice")}
+      {chip(shipState, `Kirim ${fmtNum(d.agg.qtyFulfilled)}/${fmtNum(d.agg.qtyOrder)}`)}
     </div>
   );
 }
@@ -274,47 +363,68 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
   );
 }
 
-/* ---------------- Detail Order ---------------- */
-function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
-  const [ord, setOrd] = useState(order);
+/* ---------------- Modal: Lihat Order (read-only, tab Sales) ---------------- */
+function OrderView({ order, custName, onClose }) {
   const [lines, setLines] = useState(null);
   const [invoices, setInvoices] = useState([]);
-  const [paysByInv, setPaysByInv] = useState({});
-  const [ship, setShip] = useState({});      // line_id -> qty kirim
+  useEffect(() => { (async () => {
+    const [lnRes, ivRes] = await Promise.all([
+      supabase.from("sf_do_order_lines").select("*").eq("order_id", order.id).order("sku"),
+      supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).order("created_at"),
+    ]);
+    setLines(lnRes.data || []); setInvoices(ivRes.data || []);
+  })(); }, [order.id]);
+  return (
+    <div className="ar-overlay" onClick={onClose}>
+      <div className="ar-modal" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>{order.order_no}</div>
+            <div className="small muted">{custName} · {order.order_date} · <OStatus s={order.status} /></div>
+          </div>
+          <button className="btn btn-ghost" onClick={onClose}>Tutup</button>
+        </div>
+        {lines === null ? <div className="center-msg">Memuat…</div> : (
+          <>
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <table>
+                <thead><tr><th>SKU</th><th>Produk</th><th className="num">Qty</th><th className="num">Terkirim</th><th className="num">Harga/unit</th><th className="num">Total</th></tr></thead>
+                <tbody>{lines.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ fontSize: 12 }}>{l.sku}</td><td className="strong">{l.product_name || "—"}</td>
+                    <td className="num">{fmtNum(l.qty_order)}</td><td className="num">{fmtNum(l.qty_fulfilled)}</td>
+                    <td className="num">{fmtIDR(l.unit_price)}</td><td className="num strong">{fmtIDR(Number(l.unit_price) * Number(l.qty_order))}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div className="small muted">Total order: <b style={{ color: "var(--ink)" }}>{fmtIDR(order.total)}</b> · {invoices.length === 0 ? "belum ada invoice" : invoices.map((i) => `${i.invoice_no} (${i.type})`).join(" · ")}</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Modal: Fulfillment (tab Warehouse) ---------------- */
+function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
+  const [ord, setOrd] = useState(order);
+  const [lines, setLines] = useState(null);
+  const [ship, setShip] = useState({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
   async function reload() {
-    const [ordRes, lnRes, ivRes] = await Promise.all([
+    const [ordRes, lnRes] = await Promise.all([
       supabase.from("sf_do_orders").select("*").eq("id", order.id).single(),
       supabase.from("sf_do_order_lines").select("*").eq("order_id", order.id).order("sku"),
-      supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).order("created_at"),
     ]);
     if (ordRes.data) setOrd(ordRes.data);
     setLines(lnRes.data || []);
-    const invs = ivRes.data || [];
-    setInvoices(invs);
-    if (invs.length) {
-      const { data: p } = await supabase.from("sf_do_payments").select("*").in("invoice_id", invs.map((i) => i.id)).order("paid_at");
-      const map = {}; (p || []).forEach((x) => { (map[x.invoice_id] = map[x.invoice_id] || []).push(x); });
-      setPaysByInv(map);
-    } else setPaysByInv({});
   }
   useEffect(() => { reload(); }, [order.id]);
-
-  const deliveredValue = (lines || []).reduce((s, l) => s + Number(l.unit_price || 0) * Number(l.qty_fulfilled || 0), 0);
   const anyRemaining = (lines || []).some((l) => Number(l.qty_order) - Number(l.qty_fulfilled) > 0);
   const active = ord.status !== "cancelled" && ord.status !== "fulfilled" && ord.status !== "closed";
-
-  async function closeOrder() {
-    if (busy) return;
-    setBusy(true); setMsg(null);
-    try {
-      await supabase.from("sf_do_orders").update({ status: "closed" }).eq("id", order.id);
-      setMsg({ t: "ok", m: "Order ditutup — sisa yang belum terkirim dibatalkan (stok tidak berubah)." });
-      await reload(); onChange();
-    } catch (e) { setMsg({ t: "err", m: "Gagal tutup order: " + (e.message || "") }); } finally { setBusy(false); }
-  }
 
   async function doFulfill() {
     if (busy) return;
@@ -328,6 +438,15 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
       await reload(); onChange();
     } catch (e) { setMsg({ t: "err", m: "Gagal kirim: " + (e.message || "cek stok/izin") }); } finally { setBusy(false); }
   }
+  async function closeOrder() {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      await supabase.from("sf_do_orders").update({ status: "closed" }).eq("id", order.id);
+      setMsg({ t: "ok", m: "Order ditutup — sisa yang belum terkirim dibatalkan (stok tidak berubah)." });
+      await reload(); onChange();
+    } catch (e) { setMsg({ t: "err", m: "Gagal tutup order: " + (e.message || "") }); } finally { setBusy(false); }
+  }
 
   if (lines === null) return (
     <div className="ar-overlay" onClick={onClose}><div className="ar-modal" onClick={(e) => e.stopPropagation()}><div className="center-msg">Memuat…</div></div></div>
@@ -339,26 +458,21 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: 17 }}>{order.order_no}</div>
-            <div className="small muted">{custName} · {order.order_date} · <OStatus s={ord.status} /></div>
+            <div className="small muted">Fulfillment · {custName} · <OStatus s={ord.status} /></div>
           </div>
           <button className="btn btn-ghost" onClick={onClose}>Tutup</button>
         </div>
-
         {msg && <div className="card" style={{ background: msg.t === "ok" ? "var(--good-soft)" : "var(--bad-soft)", borderColor: "transparent", color: msg.t === "ok" ? "var(--good)" : "var(--bad)" }}>{msg.m}</div>}
-
-        {/* baris + fulfillment */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <table>
             <thead><tr>
               <th>SKU</th><th>Produk</th><th className="num">Order</th><th className="num">Terkirim</th>
-              <th className="num">Sisa</th><th className="num">Stok WH</th><th className="num">Harga/unit</th>
-              {canDo && active && <th className="num">Kirim</th>}
+              <th className="num">Sisa</th><th className="num">Stok WH</th>{canDo && active && <th className="num">Kirim</th>}
             </tr></thead>
             <tbody>
               {lines.map((l) => {
                 const sisa = Number(l.qty_order) - Number(l.qty_fulfilled);
                 const stok = stockWh[l.sku] ?? 0;
-                const canShip = canDo && active;
                 return (
                   <tr key={l.id}>
                     <td style={{ fontSize: 12 }}>{l.sku}</td>
@@ -367,8 +481,7 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
                     <td className="num">{fmtNum(l.qty_fulfilled)}</td>
                     <td className="num" style={{ fontWeight: 700 }}>{fmtNum(sisa)}</td>
                     <td className="num" style={{ color: stok < sisa ? "var(--bad)" : undefined }}>{fmtNum(stok)}</td>
-                    <td className="num">{fmtIDR(l.unit_price)}</td>
-                    {canShip && (
+                    {canDo && active && (
                       <td className="num">
                         {sisa > 0 ? (
                           <input className="num" type="number" min="0" max={Math.min(sisa, stok)} value={ship[l.id] ?? ""}
@@ -383,16 +496,58 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
           </table>
         </div>
         {canDo && active && (
-          <div style={{ display: "flex", justifyContent: anyRemaining ? "space-between" : "flex-end", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", justifyContent: anyRemaining ? "space-between" : "flex-end", gap: 8, flexWrap: "wrap" }}>
             {anyRemaining && <button className="btn btn-ghost" onClick={closeOrder} disabled={busy}>Tutup order (batalkan sisa)</button>}
             <button className="btn btn-primary" onClick={doFulfill} disabled={busy}>{busy ? "Memproses…" : "Kirim dari WH-Main"}</button>
           </div>
         )}
+        {!active && <p className="small muted">Order sudah {ord.status === "fulfilled" ? "terkirim penuh" : ord.status}. Tidak ada aksi kirim.</p>}
+      </div>
+    </div>
+  );
+}
 
-        {/* Invoice + pembayaran */}
-        <InvoicePanel order={ord} invoices={invoices} paysByInv={paysByInv} deliveredValue={deliveredValue}
-          orderClosed={ord.status === "closed" || ord.status === "fulfilled"} canDo={canDo}
-          onChange={() => { reload(); onChange(); }} />
+/* ---------------- Modal: Invoice (tab Finance) ---------------- */
+function InvoiceModal({ order, custName, canDo, onClose, onChange }) {
+  const [ord, setOrd] = useState(order);
+  const [lines, setLines] = useState(null);
+  const [invoices, setInvoices] = useState([]);
+  const [paysByInv, setPaysByInv] = useState({});
+
+  async function reload() {
+    const [ordRes, lnRes, ivRes] = await Promise.all([
+      supabase.from("sf_do_orders").select("*").eq("id", order.id).single(),
+      supabase.from("sf_do_order_lines").select("unit_price,qty_fulfilled").eq("order_id", order.id),
+      supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).order("created_at"),
+    ]);
+    if (ordRes.data) setOrd(ordRes.data);
+    setLines(lnRes.data || []);
+    const invs = ivRes.data || [];
+    setInvoices(invs);
+    if (invs.length) {
+      const { data: p } = await supabase.from("sf_do_payments").select("*").in("invoice_id", invs.map((i) => i.id)).order("paid_at");
+      const map = {}; (p || []).forEach((x) => { (map[x.invoice_id] = map[x.invoice_id] || []).push(x); });
+      setPaysByInv(map);
+    } else setPaysByInv({});
+  }
+  useEffect(() => { reload(); }, [order.id]);
+  const deliveredValue = (lines || []).reduce((s, l) => s + Number(l.unit_price || 0) * Number(l.qty_fulfilled || 0), 0);
+
+  return (
+    <div className="ar-overlay" onClick={onClose}>
+      <div className="ar-modal" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>{order.order_no}</div>
+            <div className="small muted">Invoice · {custName} · total {fmtIDR(order.total)} · <OStatus s={ord.status} /></div>
+          </div>
+          <button className="btn btn-ghost" onClick={onClose}>Tutup</button>
+        </div>
+        {lines === null ? <div className="center-msg">Memuat…</div> : (
+          <InvoicePanel order={ord} invoices={invoices} paysByInv={paysByInv} deliveredValue={deliveredValue}
+            orderClosed={ord.status === "closed" || ord.status === "fulfilled"} canDo={canDo}
+            onChange={() => { reload(); onChange(); }} />
+        )}
       </div>
     </div>
   );

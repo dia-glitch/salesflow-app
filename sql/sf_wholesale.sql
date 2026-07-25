@@ -77,10 +77,10 @@ create table if not exists sf_do_payments (
 );
 create index if not exists idx_do_pay_inv on sf_do_payments(invoice_id);
 
--- ---- Channel WHOLESALE (biar penjualan wholesale kebedaan di laporan) ------
+-- ---- Channel direct_purchase (fallback — biasanya sudah dibuat di master) --
 -- Salin default_net_basis dari channel yang sudah ada supaya tipe/enumnya valid.
 insert into cf_sales_channels (channel_id, name, kind, fulfill_location_id, default_net_basis)
-select 'WHOLESALE', 'Wholesale', 'offline',
+select 'direct_purchase', 'Direct Purchase', 'offline',
        (select location_id from cf_locations where type = 'wh_main' order by location_id limit 1),
        (select default_net_basis from cf_sales_channels order by channel_id limit 1)
 on conflict (channel_id) do nothing;
@@ -143,7 +143,7 @@ begin
   if not found then raise exception 'Order tidak ditemukan'; end if;
   if o.status = 'cancelled' then raise exception 'Order sudah dibatalkan'; end if;
 
-  select default_net_basis into v_basis from cf_sales_channels where channel_id = 'WHOLESALE';
+  select default_net_basis into v_basis from cf_sales_channels where channel_id = 'direct_purchase';
 
   for item in select * from jsonb_array_elements(p_lines)
   loop
@@ -171,7 +171,7 @@ begin
       (txn_date, channel_id, location_id, sku, qty, retail_price, sale_at_price,
        discount, net_amount, net_basis, commission, source_txn_id)
     values
-      (current_date, 'WHOLESALE', o.fulfill_location_id, ln.sku, v_qty,
+      (current_date, 'direct_purchase', o.fulfill_location_id, ln.sku, v_qty,
        ln.retail_price, ln.unit_price,
        greatest(ln.retail_price - ln.unit_price, 0) * v_qty,
        ln.unit_price * v_qty, v_basis, 0,
