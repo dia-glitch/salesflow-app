@@ -266,7 +266,7 @@ export default function Dashboard({ role }) {
   return (
     <div>
       <h1 className="title">Dashboard</h1>
-      <div style={{ display: "flex", gap: 8, margin: "0 0 18px", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "inline-flex", gap: 4, margin: "0 0 20px", background: "var(--surface2)", padding: 5, borderRadius: 14, flexWrap: "wrap" }}>
         <TabBtn active={section === "sales"} onClick={() => setSection("sales")}>Sales Overview</TabBtn>
         <TabBtn active={section === "product"} onClick={() => setSection("product")}>Produk &amp; Margin</TabBtn>
         <TabBtn active={section === "channel"} onClick={() => setSection("channel")}>Channel Overview</TabBtn>
@@ -570,10 +570,10 @@ export default function Dashboard({ role }) {
 
 const TabBtn = ({ active, onClick, children }) => (
   <button onClick={onClick} style={{
-    background: "none", border: "none", padding: "8px 4px", marginBottom: -1,
-    fontFamily: "var(--sans)", fontSize: 14, cursor: "pointer",
-    color: active ? "var(--accent)" : "var(--sub)", fontWeight: active ? 600 : 400,
-    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+    background: active ? "var(--black)" : "transparent", border: "none",
+    padding: "10px 18px", borderRadius: 10, fontFamily: "var(--sans)", fontSize: 14,
+    cursor: "pointer", color: active ? "#fff" : "var(--sub)", fontWeight: active ? 700 : 600,
+    transition: ".13s", whiteSpace: "nowrap",
   }}>{children}</button>
 );
 
