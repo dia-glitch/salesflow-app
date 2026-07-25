@@ -55,6 +55,7 @@ export default function Dashboard({ role }) {
   const [stores, setStores] = useState([]);
   const [targetsRaw, setTargetsRaw] = useState([]);
   const [skuLaunch, setSkuLaunch] = useState({});   // sku -> launch_date (via collection)
+  const [showAllLoc, setShowAllLoc] = useState(false);
 
   const [month, setMonth] = useState(thisMonth());
   const [year, setYear] = useState(String(new Date().getFullYear()));
@@ -271,6 +272,7 @@ export default function Dashboard({ role }) {
 
   const grpTotal = (m.byGroup.Online + m.byGroup.Offline) || 1;
   const locMax = Math.max(...Object.values(m.byLoc), 1);
+  const locEntries = Object.entries(m.byLoc).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
@@ -474,17 +476,27 @@ export default function Dashboard({ role }) {
             </div>
 
             <div className="card">
-              <div className="section-label">Sales per lokasi</div>
-              <div style={{ marginTop: 12 }}>
-                {Object.entries(m.byLoc).length === 0 ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div className="section-label">Sales per lokasi{locEntries.length > 0 ? ` (${locEntries.length})` : ""}</div>
+                {locEntries.length > 5 && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowAllLoc((v) => !v)}>
+                    {showAllLoc ? "Ciutkan" : "Lihat semua"}
+                  </button>
+                )}
+              </div>
+              <div style={{ marginTop: 12, maxHeight: showAllLoc ? 300 : "none", overflowY: showAllLoc ? "auto" : "visible" }}>
+                {locEntries.length === 0 ? (
                   <p className="small muted">Belum ada penjualan bulan ini.</p>
                 ) : (
-                  Object.entries(m.byLoc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => (
+                  (showAllLoc ? locEntries : locEntries.slice(0, 5)).map(([k, v]) => (
                     <div className="bar" key={k}>
                       <div className="row"><span className="nm">{k}</span><span className="rt">{fmtShort(v)}</span></div>
                       <div className="track"><div className="fill" style={{ width: (v / locMax) * 100 + "%", background: "#3F7D58" }} /></div>
                     </div>
                   ))
+                )}
+                {!showAllLoc && locEntries.length > 5 && (
+                  <div className="small muted" style={{ marginTop: 4 }}>+{locEntries.length - 5} lokasi lain — klik “Lihat semua”.</div>
                 )}
               </div>
             </div>
