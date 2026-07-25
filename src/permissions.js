@@ -22,6 +22,7 @@ const PAGE2RES = {
   upload:     "upload_sales",
   kol:        "kol_giveaway",
   ar:         "penagihan_ar",
+  wholesale:  "wholesale_order",
   skus:       "sku_master",
   admin:      "admin_panel",
   panduan:    "panduan",
@@ -33,6 +34,8 @@ const AREA2RES = {
   input:     ["input_sales", "upload_sales"], // input + upload penjualan
   sku:       ["sku_master"],                // edit SKU master
   ar:        ["penagihan_ar"],              // submit invoice AR + edit margin
+  wholesale_order:    ["wholesale_order"],       // buat order + fulfillment + invoice
+  wholesale_customer: ["wholesale_customer"],    // kelola master customer
   target:    ["dashboard"],                 // set target (Dashboard)
   admin:     ["admin_panel"],               // kelola user/role
 };
