@@ -135,7 +135,7 @@ declare
   v_qty    numeric;
   v_onhand numeric;
   v_cogm   numeric;
-  v_basis  text;
+  v_basis  cf_net_basis;   -- net_basis di cf_sales_fact bertipe enum cf_net_basis
   v_fact   bigint;
   v_ship   int := 0;
 begin
