@@ -228,10 +228,10 @@ export default function Sales({ role }) {
                       </span>
                     </td>
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.source_txn_id}</td>
-                    <td style={{ padding: "9px 12px" }}>{chMap[r.channel_id]?.name || r.channel_id}</td>
-                    <td style={{ padding: "9px 12px" }} className="muted">{locMap[r.location_id] || r.location_id}</td>
+                    <td style={{ padding: "9px 12px" }} className="strong">{chMap[r.channel_id]?.name || r.channel_id}</td>
+                    <td style={{ padding: "9px 12px" }} className="strong">{locMap[r.location_id] || r.location_id}</td>
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{r.sku}</td>
-                    <td style={{ padding: "9px 12px" }} className="muted">{skuMap[r.sku]?.name || ""}</td>
+                    <td style={{ padding: "9px 12px" }} className="strong">{skuMap[r.sku]?.name || ""}</td>
                     <td style={{ padding: "9px 12px" }} className="num">{(Number(r.qty) || 0) * (isRet ? -1 : 1)}</td>
                     <td style={{ padding: "9px 12px" }} className="num muted">{fmtIDR(r.retail_price)}</td>
                     <td style={{ padding: "9px 12px" }} className="num">{fmtIDR(r.discount || 0)}</td>

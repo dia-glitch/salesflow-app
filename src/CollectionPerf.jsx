@@ -253,7 +253,7 @@ const ProdCell = ({ p, img }) => {
       <div style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0,
         background: img ? `center/cover no-repeat url(${img})` : "var(--paper)", border: "1px solid var(--line)" }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+        <div style={{ fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
         <div className="small muted">{p.code} · {fmtNum(p.sold)} terjual · sisa {fmtNum(p.stock)}</div>
         <div className="track" style={{ marginTop: 6 }}>
           <div className="fill" style={{ width: Math.min(100, p.st) + "%", background: sc.c }} />

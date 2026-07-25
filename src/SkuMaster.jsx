@@ -298,7 +298,7 @@ export default function SkuMaster({ role }) {
                         </button>
                       </td>
                       <td style={{ padding: "9px 12px", fontWeight: 500 }}>{r.sku}</td>
-                      <td style={{ padding: "9px 12px" }}>{r.name}</td>
+                      <td style={{ padding: "9px 12px" }} className="strong">{r.name}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12 }} className="muted">{r.product_code}</td>
                       <td style={{ padding: "9px 12px" }}>
                         {r.collection !== "—" ? <span className="pill" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>{r.collection}</span> : <span className="muted">—</span>}

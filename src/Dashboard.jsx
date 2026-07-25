@@ -283,7 +283,7 @@ export default function Dashboard({ role }) {
                     const pct = r.target > 0 ? (r.actual / r.target) * 100 : null;
                     return (
                       <tr key={r.key}>
-                        <td>{r.label}</td>
+                        <td className="strong">{r.label}</td>
                         <td className="num">{fmtIDR(r.target)}</td>
                         <td className="num">{fmtIDR(r.actual)}</td>
                         <td className="num" style={{ color: pct == null ? "var(--faint)" : achColor(pct) }}>

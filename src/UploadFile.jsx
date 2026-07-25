@@ -358,8 +358,8 @@ export default function UploadFile({ role }) {
                           : <span className="pill" style={{ background: "var(--bad-soft)", color: "var(--bad)" }}>{r.problem}</span>}
                       </td>
                       <td style={{ padding: "8px 12px", fontSize: 12 }}>{r.sku}</td>
-                      <td style={{ padding: "8px 12px" }} className="muted">{r.name}</td>
-                      <td style={{ padding: "8px 12px" }}>{r.channel_name || "—"}</td>
+                      <td style={{ padding: "8px 12px" }} className="strong">{r.name}</td>
+                      <td style={{ padding: "8px 12px" }} className="strong">{r.channel_name || "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="muted">{r.loc_label || "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="num">{r.qty ?? "—"}</td>
                       <td style={{ padding: "8px 12px" }} className="num">{r.price != null ? fmtIDR(r.price) : "—"}</td>

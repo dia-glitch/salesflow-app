@@ -155,7 +155,7 @@ export default function RestockNotif() {
                     const label = tone === "bad" ? "Produksi segera" : tone === "warn" ? "Pantau" : "Aman";
                     return (
                       <tr key={r.code}>
-                        <td style={td}>{r.name} <span className="muted" style={{ fontSize: 11 }}>· {r.collection}</span></td>
+                        <td style={td}><span className="strong">{r.name}</span> <span className="muted" style={{ fontSize: 11 }}>· {r.collection}</span></td>
                         <td style={tdR}>{r.vel.toFixed(1)}</td>
                         <td style={tdR}>{fmtNum(r.stock)}</td>
                         <td style={{ ...tdR, fontWeight: 600, color: `var(--${tone})` }}>{Number.isFinite(r.cover) ? Math.round(r.cover) + " hari" : "—"}</td>

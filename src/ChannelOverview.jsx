@@ -152,7 +152,7 @@ export default function ChannelOverview() {
               const s = statusOf(r.sold, r.stock, r.st);
               return (
                 <tr key={r.key}>
-                  <td>{r.name}</td>
+                  <td className="strong">{r.name}</td>
                   <td className="num">{fmtNum(r.sold)}</td>
                   <td className="num">{fmtNum(r.stock)}</td>
                   <td className="num" style={{ color: stTone(r.st), fontWeight: 500 }}>{Math.round(r.st)}%</td>

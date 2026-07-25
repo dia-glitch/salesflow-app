@@ -1,8 +1,8 @@
 :root{
   /* base — background putih, minimalist */
   --paper:#FFFFFF; --surface2:#F3F3F1; --card:#FFFFFF;
-  --ink:#17171A; --sub:#71717A; --faint:#A1A1AA;
-  --line:#EAEAE8; --black:#141416;
+  --ink:#0B0B0D; --sub:#56565E; --faint:#8A8A93;
+  --line:#EAEAE8; --black:#0B0B0D;
   /* aksen merah (hint tema lama, versi lebih bersih) */
   --accent:#C4442A; --accent-soft:#F7E7E1; --accent-ink:#9A3620;
   /* warm neutral untuk kartu aksen (opsi B) */
@@ -15,7 +15,7 @@
   --shadow:0 1px 2px rgba(20,20,22,.04),0 6px 22px rgba(20,20,22,.05);
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;font-weight:500;line-height:1.5;-webkit-font-smoothing:antialiased}
 button{font-family:var(--sans);cursor:pointer}
 code{background:var(--surface2);padding:1px 5px;border-radius:5px;font-size:.92em}
 
@@ -77,6 +77,9 @@ td input{padding:7px 8px}
 
 .pill{font-size:11.5px;padding:5px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;font-weight:500}
 .muted{color:var(--sub)} .small{font-size:12px} .ok{color:var(--good)} .err{color:var(--bad)}
+/* penegasan: nama produk / channel / store dibuat tebal & hitam pekat */
+.strong{font-weight:700;color:var(--ink)}
+.nm{font-weight:700;color:var(--ink)}
 .x{color:var(--bad);background:none;border:none;font-size:16px;line-height:1}
 .foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .total{font-family:var(--serif);font-size:20px;font-weight:700;letter-spacing:-.4px}

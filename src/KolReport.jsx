@@ -152,7 +152,7 @@ export default function KolReport() {
                     <td style={{ padding: "9px 12px" }} className="muted">{dShort(r.date)}</td>
                     <td style={{ padding: "9px 12px" }}>{r.recv}</td>
                     <td style={{ padding: "9px 12px" }}>{r.sku}</td>
-                    <td style={{ padding: "9px 12px" }} className="muted">{r.name}</td>
+                    <td style={{ padding: "9px 12px" }} className="strong">{r.name}</td>
                     <td style={{ padding: "9px 12px" }} className="num">{fmtNum(r.qty)}</td>
                     <td style={{ padding: "9px 12px" }} className="num muted">{r.cogm ? fmtIDR(r.cogm) : "—"}</td>
                     <td style={{ padding: "9px 12px" }} className="num">{fmtIDR(r.mkt)}</td>

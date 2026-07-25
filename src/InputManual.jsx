@@ -286,7 +286,7 @@ export default function InputManual({ role }) {
                   <input list="skulist" value={r.sku} placeholder="ketik / pilih SKU"
                     onChange={(e) => onSku(i, e.target.value)} />
                 </td>
-                <td className="small muted">{r.name}</td>
+                <td className="small strong">{r.name}</td>
                 <td className="num">{(() => { const st = stockOf(r.sku); if (st == null) return "—"; const low = st <= 0 || st < (Number(r.qty) || 0); return <span style={low ? { color: "var(--bad)", fontWeight: 700 } : {}}>{st}</span>; })()}</td>
                 <td><input className="num" type="number" min="1" value={r.qty}
                   onChange={(e) => setRow(i, { qty: e.target.value })} /></td>
