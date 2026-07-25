@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtNum } from "./format.js";
+import { fmtNum, cleanName } from "./format.js";
 
 const WINDOW_DAYS = 30;       // window laju jual
 const PROD_COVER_WARN = 21;   // cover < ini → produksi segera (merah)
@@ -10,11 +10,6 @@ const TARGET_COVER = 30;      // target cover utk hitung qty rekomendasi
 const WH_SOURCE = "WH-MAIN";  // sumber stok restock ke store
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
-const stripSize = (name, size) => {
-  if (size && name.toUpperCase().endsWith(" " + size.toUpperCase()))
-    return name.slice(0, name.length - size.length - 1).trim();
-  return name;
-};
 const th = { padding: "10px 12px", textAlign: "left" };
 const thR = { padding: "10px 12px", textAlign: "right" };
 const td = { padding: "9px 12px" };
@@ -34,7 +29,7 @@ export default function RestockNotif() {
       try {
         const [fact, items, prods, stock, loc] = await Promise.all([
           supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date,location_id").neq("channel_id", "KOL"),
-          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label").limit(10000),
+          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
           supabase.from("cf_locations").select("location_id,name,type"),
@@ -59,7 +54,7 @@ export default function RestockNotif() {
       const p = prodBy[it.spk_id] || {};
       const size = it.size_label || "";
       master[it.sku] = {
-        name: stripSize(p.product_name_system || it.product_name_system || it.sku, size),
+        name: cleanName(p.product_name_system || it.product_name_system || it.sku, size, it.colour_lv2),
         size, code: p.product_code || it.sku, collection: p.collection_code || "—",
       };
     });

@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtShort, fmtNum } from "./format.js";
+import { fmtShort, fmtNum, cleanName } from "./format.js";
 
-const stripSize = (name, size) => {
-  if (size && name.toUpperCase().endsWith(" " + size.toUpperCase()))
-    return name.slice(0, name.length - size.length - 1).trim();
-  return name;
-};
 const stTone = (p) => p >= 60 ? "var(--good)" : p >= 35 ? "var(--warn)" : "var(--bad)";
 
 // Kategori koleksi dari prefix kode (CR-001 → Core). Prefix tak dikenal → tampil apa adanya.
@@ -29,7 +24,7 @@ export default function ProductTab() {
       try {
         const [fact, items, prods, prices, stock, loc, imgs] = await Promise.all([
           supabase.from("cf_sales_fact").select("sku,qty,net_amount").neq("channel_id", "KOL"),
-          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label").limit(10000),
+          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code,category_lv1,category_lv2"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
@@ -47,7 +42,7 @@ export default function ProductTab() {
           const p = prodBy[it.spk_id] || {};
           const pr = priceBy[it.spk_id] || {};
           const size = it.size_label || "";
-          const name = stripSize(p.product_name_system || it.product_name_system || it.sku, size);
+          const name = cleanName(p.product_name_system || it.product_name_system || it.sku, size, it.colour_lv2);
           master[it.sku] = {
             name, size,
             code: p.product_code || it.sku,

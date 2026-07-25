@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtIDR, fmtNum, dShort } from "./format.js";
+import { fmtIDR, fmtNum, dShort, cleanName } from "./format.js";
 
 const KOL_CH = "KOL";
 
@@ -25,7 +25,7 @@ export default function KolReport() {
       try {
         const [fact, items, prods, prc, loc] = await Promise.all([
           supabase.from("cf_sales_fact").select("txn_date,sku,qty,retail_price,location_id,source_txn_id").eq("channel_id", KOL_CH).order("txn_date", { ascending: false }),
-          supabase.from("sku_items").select("sku,spk_id,product_name_system,colour_lv2").limit(10000),
+          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(10000),
           supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final,retail_price"),
           supabase.from("cf_locations").select("location_id,name"),
@@ -52,7 +52,7 @@ export default function KolReport() {
       const it = itemBy[f.sku] || {};
       const p = prodBy[it.spk_id] || {};
       const pr = prcBy[it.spk_id] || {};
-      const name = `${p.product_name_system || it.product_name_system || f.sku} ${it.colour_lv2 || ""}`.trim();
+      const name = cleanName(p.product_name_system || it.product_name_system || f.sku, it.size_label, it.colour_lv2);
       const cogm = Number(pr.cogm_final ?? pr.cogm ?? 0) || 0;
       const retail = Number(f.retail_price ?? pr.retail_price ?? 0) || 0;
       const qty = Number(f.qty) || 0;

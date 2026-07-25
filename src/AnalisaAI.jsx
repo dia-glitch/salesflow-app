@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtShort, fmtNum } from "./format.js";
+import { fmtShort, fmtNum, cleanName } from "./format.js";
 
 const thisMonth = () => {
   const d = new Date();
@@ -44,7 +44,7 @@ export default function AnalisaAI() {
           supabase.from("cf_sales_channels").select("channel_id,name,kind"),
           supabase.from("cf_locations").select("location_id,name,type"),
           supabase.from("sku_items").select("sku,spk_id").limit(10000),
-          supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
+          supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code,colour_lv2"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
           supabase.from("sales_targets").select("month,target_key,target_amount"),
@@ -75,7 +75,7 @@ export default function AnalisaAI() {
     raw.items.forEach((it) => {
       const p = prodBy[it.spk_id] || {}; const pr = priceBy[it.spk_id] || {};
       sku[it.sku] = { coll: p.collection_code || "—", code: p.product_code || it.sku,
-        name: p.product_name_system || it.sku, cogm: Number(pr.cogm_final ?? pr.cogm ?? 0) || 0 };
+        name: cleanName(p.product_name_system || it.sku, "", p.colour_lv2), cogm: Number(pr.cogm_final ?? pr.cogm ?? 0) || 0 };
     });
 
     // Stok terkini per sku (lokasi jual)

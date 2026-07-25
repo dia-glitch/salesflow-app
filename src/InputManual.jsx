@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtIDR, todayISO } from "./format.js";
+import { fmtIDR, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 
 const emptyRow = () => ({ sku: "", name: "", retail: "", qty: 1, price: "", disc: 0 });
@@ -31,7 +31,7 @@ export default function InputManual({ role }) {
         const [ch, loc, si, prc, soh] = await Promise.all([
           supabase.from("cf_sales_channels").select("channel_id,name,kind,fulfill_location_id,default_net_basis"),
           supabase.from("cf_locations").select("location_id,name,type,is_active"),
-          supabase.from("sku_items").select("sku,spk_id,product_name_system,colour_lv2").limit(5000),
+          supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(5000),
           supabase.from("cogm_retail_prices").select("spk_id,retail_price"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
         ]);
@@ -44,7 +44,7 @@ export default function InputManual({ role }) {
         (prc.data || []).forEach((p) => { if (p.spk_id) prcBySpk[p.spk_id] = p; });
         const list = (si.data || []).map((x) => {
           const retail = prcBySpk[x.spk_id]?.retail_price ?? "";
-          const name = `${x.product_name_system || ""} ${x.colour_lv2 || ""}`.trim();
+          const name = cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2);
           return { sku: x.sku, label: `${name} (${x.sku})`, name, retail };
         });
         const map = {};

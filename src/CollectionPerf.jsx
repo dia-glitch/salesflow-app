@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtIDR, fmtNum, fmtShort } from "./format.js";
+import { fmtIDR, fmtNum, fmtShort, cleanName } from "./format.js";
 
 const daysSince = (iso) => {
   if (!iso) return null;
@@ -29,7 +29,7 @@ export default function CollectionPerf() {
         const [fact, items, prods, prices, spks, stock, loc, imgs] = await Promise.all([
           supabase.from("cf_sales_fact").select("sku,qty,net_amount,txn_date").neq("channel_id", "KOL"),
           supabase.from("sku_items").select("sku,spk_id").limit(10000),
-          supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code"),
+          supabase.from("sku_products").select("spk_id,product_code,product_name_system,collection_code,colour_lv2"),
           supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final,retail_price"),
           supabase.from("spk_orders").select("collection_code,designer,launch_date"),
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
@@ -62,7 +62,7 @@ export default function CollectionPerf() {
       const pr = priceBy[it.spk_id] || {};
       sku[it.sku] = {
         coll: p.collection_code || "—", code: p.product_code || it.sku,
-        name: p.product_name_system || it.sku,
+        name: cleanName(p.product_name_system || it.sku, "", p.colour_lv2),
         cogm: Number(pr.cogm_final ?? pr.cogm ?? 0) || 0,
         retail: Number(pr.retail_price ?? 0) || 0,
       };

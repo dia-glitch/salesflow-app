@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { fmtIDR, fmtNum, todayISO } from "./format.js";
+import { fmtIDR, fmtNum, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 
 function firstOfMonthISO() {
@@ -48,7 +48,7 @@ export default function Sales({ role }) {
           .order("txn_date", { ascending: false }).order("id", { ascending: false }),
         supabase.from("cf_sales_channels").select("channel_id,name,kind"),
         supabase.from("cf_locations").select("location_id,name"),
-        supabase.from("sku_items").select("sku,spk_id,product_name_system").limit(5000),
+        supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(5000),
         supabase.from("cogm_retail_prices").select("spk_id,cogm,cogm_final"),
       ]);
       for (const r of [f, ch, loc, si, prc]) if (r.error) throw r.error;
@@ -59,7 +59,7 @@ export default function Sales({ role }) {
       const sm = {};
       (si.data || []).forEach((x) => {
         const p = prcBySpk[x.spk_id] || {};
-        sm[x.sku] = { name: x.product_name_system || x.sku, cogm: Number(p.cogm_final ?? p.cogm ?? 0) };
+        sm[x.sku] = { name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2), cogm: Number(p.cogm_final ?? p.cogm ?? 0) };
       });
       setRows(f.data || []); setChMap(cm); setLocMap(lm); setSkuMap(sm);
     } catch (e) {
