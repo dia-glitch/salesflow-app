@@ -10,6 +10,7 @@ import AdminPanel from "./AdminPanel.jsx";
 import AnalisaAI from "./AnalisaAI.jsx";
 import RestockNotif from "./RestockNotif.jsx";
 import KolReport from "./KolReport.jsx";
+import Penagihan from "./Penagihan.jsx";
 import Login from "./Login.jsx";
 import Panduan from "./Panduan.jsx";
 import { hasConfig, supabase } from "./supabaseClient.js";
@@ -110,6 +111,7 @@ export default function App() {
           if (view === "collection") return <CollectionPerf />;
           if (view === "restock") return <RestockNotif />;
           if (view === "kol") return <KolReport />;
+          if (view === "ar") return <Penagihan role={role} />;
           if (view === "ai") return <AnalisaAI />;
           if (view === "panduan") return <Panduan />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;

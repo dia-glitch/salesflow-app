@@ -21,6 +21,7 @@ const PAGE2RES = {
   input:      "input_sales",
   upload:     "upload_sales",
   kol:        "kol_giveaway",
+  ar:         "penagihan_ar",
   skus:       "sku_master",
   admin:      "admin_panel",
   panduan:    "panduan",
@@ -31,6 +32,7 @@ const AREA2RES = {
   penjualan: ["penjualan"],                 // ekspor CSV di halaman Penjualan
   input:     ["input_sales", "upload_sales"], // input + upload penjualan
   sku:       ["sku_master"],                // edit SKU master
+  ar:        ["penagihan_ar"],              // submit invoice AR + edit margin
   target:    ["dashboard"],                 // set target (Dashboard)
   admin:     ["admin_panel"],               // kelola user/role
 };

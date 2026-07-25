@@ -21,6 +21,12 @@ const GROUPS = [
     ],
   },
   {
+    title: "Keuangan",
+    items: [
+      { k: "ar", label: "Penagihan AR", icon: "M5 3h11l4 4v14H5zM16 3v4h4M8 12h8M8 16h5M8 8h3" },
+    ],
+  },
+  {
     title: "Data",
     items: [
       { k: "skus", label: "SKU Master", icon: "M4 7h16M4 7l1 13h14l1-13M9 7V4h6v3" },
