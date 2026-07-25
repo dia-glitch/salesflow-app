@@ -17,6 +17,7 @@ export default function InputManual({ role }) {
   const [channelId, setChannelId] = useState("");
   const [storeId, setStoreId] = useState("");
   const [txnType, setTxnType] = useState("sale"); // sale | return
+  const [orderRef, setOrderRef] = useState("");   // no order reference (mis. no order marketplace)
   const [rows, setRows] = useState([emptyRow(), emptyRow()]);
 
   const [saveMsg, setSaveMsg] = useState(null);
@@ -118,6 +119,7 @@ export default function InputManual({ role }) {
             sale_at_price: Number(r.price) || 0,
             discount: Number(r.disc) || 0,
             txn_type: txnType,
+            order_ref: orderRef.trim() || null,
             source_txn_id: (txnType === "return" ? "RET-" : "MAN-") + stamp + "-" + idx,
           },
         };
@@ -253,6 +255,10 @@ export default function InputManual({ role }) {
               )}
             </div>
           )}
+        </div>
+        <div style={{ marginTop: 12, maxWidth: 360 }}>
+          <label>No Order Reference <span className="muted" style={{ textTransform: "none", letterSpacing: 0 }}>(opsional · no order marketplace)</span></label>
+          <input value={orderRef} onChange={(e) => setOrderRef(e.target.value)} placeholder="mis. INV/2026/07/00123" />
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>{locInfo}</p>
       </div>

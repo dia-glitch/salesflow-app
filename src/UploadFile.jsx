@@ -11,6 +11,7 @@ const ALIASES = {
   price: ["sale_at_price", "harga_jual", "sale_price", "price", "harga"],
   disc: ["discount", "diskon"],
   retail: ["retail_price", "retail", "harga_retail"],
+  order_ref: ["order_ref", "no_order", "order_no", "order_id", "id_order", "no_pesanan", "order_reference", "no_invoice"],
   date: ["txn_date", "tanggal", "date"],
   channel: ["channel", "channel_id", "kanal", "channel_name"],
   store: ["store", "toko", "lokasi", "location", "location_id", "store_name"],
@@ -161,6 +162,7 @@ export default function UploadFile({ role }) {
         let price = parseNum(getField(n, ALIASES.price));
         const disc = parseNum(getField(n, ALIASES.disc)) || 0;
         const retailF = parseNum(getField(n, ALIASES.retail));
+        const orderRef = String(getField(n, ALIASES.order_ref) || "").trim();
         const rowDate = parseDate(getField(n, ALIASES.date));
         const master = skuMap[sku];
         const retail = retailF ?? master?.retail ?? null;
@@ -187,7 +189,7 @@ export default function UploadFile({ role }) {
         else if (chan.kind === "offline" && !loc) { ok = false; problem = "Store tidak dikenal/kosong"; }
 
         return {
-          sku, name: master?.name || "", qty, price, disc, retail, date: rowDate, ok, problem,
+          sku, name: master?.name || "", qty, price, disc, retail, order_ref: orderRef || null, date: rowDate, ok, problem,
           channel_id: chan?.channel_id || null, channel_name: chan?.name || (getField(n, ALIASES.channel) || ""),
           location_id: loc, loc_label: loc ? (locName[loc] || loc) : (chan && chan.kind !== "offline" ? chan.fulfill_location_id : "—"),
         };
@@ -210,9 +212,9 @@ export default function UploadFile({ role }) {
     const offlineCh = channels.find((c) => c.kind === "offline");
     const someStore = stores[0];
     const lines = [
-      "channel,store,sku,qty,sale_at_price,discount,retail_price,txn_date",
-      `${onlineCh?.name || "Online"},,${sample},1,395000,0,,${date}`,
-      `${offlineCh?.name || "Offline"},${someStore?.name || "Store Contoh"},${sample},1,395000,0,,${date}`,
+      "channel,store,sku,qty,sale_at_price,discount,retail_price,order_ref,txn_date",
+      `${onlineCh?.name || "Online"},,${sample},1,395000,0,,ORDER-0001,${date}`,
+      `${offlineCh?.name || "Offline"},${someStore?.name || "Store Contoh"},${sample},1,395000,0,,,${date}`,
     ];
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -243,6 +245,7 @@ export default function UploadFile({ role }) {
           retail_price: r.retail,
           sale_at_price: r.price,
           discount: r.disc,
+          order_ref: r.order_ref || null,
           source_txn_id: "UPL-" + stamp + "-" + idx,
         },
       };
@@ -314,7 +317,7 @@ export default function UploadFile({ role }) {
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>
           Kolom yang dibaca: <code>channel</code>, <code>sku</code>, <code>qty</code>, <code>sale_at_price</code> (wajib);
-          <code>store</code> (wajib untuk channel offline), <code>discount</code>, <code>retail_price</code>, <code>txn_date</code> (opsional).
+          <code>store</code> (wajib untuk channel offline), <code>discount</code>, <code>retail_price</code>, <code>order_ref</code> (no order marketplace), <code>txn_date</code> (opsional).
           Channel & store dicocokkan dari nama/kode. Online ambil stok dari lokasi channel; offline dari store di baris itu. Kalau harga jual kosong, dipakai harga retail.
         </p>
         {parseErr && <div className="err small" style={{ marginTop: 8 }}>{parseErr}</div>}
