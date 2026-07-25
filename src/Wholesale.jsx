@@ -226,7 +226,7 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
           <div><label>Tanggal order</label><input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} /></div>
           <div><label>Catatan (opsional)</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. ambil sendiri / kirim" /></div>
         </div>
-        <p className="small muted" style={{ marginTop: 8 }}>Ambil dari WH-Main. Diskon wholesale diisi manual lewat kolom <b>Harga jual/unit</b> (di bawah harga retail).</p>
+        <p className="small muted" style={{ marginTop: 8 }}>Ambil dari WH-Main. Isi <b>Diskon %</b> — harga jual/unit otomatis jadi retail − diskon (boleh juga ketik harga jual langsung).</p>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -379,7 +379,7 @@ function OrderDetail({ order, custName, stockWh, canDo, onClose, onChange }) {
 /* ---------------- Invoice + Pembayaran ---------------- */
 function InvoicePanel({ order, inv, pays, canDo, onChange }) {
   const [type, setType] = useState("full");
-  const [dp, setDp] = useState("");
+  const [dpPct, setDpPct] = useState("");
   const [due, setDue] = useState("");
   const [payAmt, setPayAmt] = useState("");
   const [method, setMethod] = useState("transfer");
@@ -390,7 +390,7 @@ function InvoicePanel({ order, inv, pays, canDo, onChange }) {
     if (busy) return;
     setBusy(true); setMsg(null);
     try {
-      const dpAmt = type === "dp" ? (Number(dp) || 0) : 0;
+      const dpAmt = type === "dp" ? Math.round(order.total * (Number(dpPct) || 0) / 100) : 0;
       const { error } = await supabase.from("sf_do_invoices").insert({
         order_id: order.id, invoice_no: "INV-" + order.order_no, type,
         total: order.total, dp_amount: dpAmt, paid_amount: 0, balance: order.total,
@@ -441,7 +441,13 @@ function InvoicePanel({ order, inv, pays, canDo, onChange }) {
                   <option value="dp">DP (uang muka)</option>
                 </select>
               </div>
-              {type === "dp" && <div><label>Nominal DP</label><input type="number" min="0" value={dp} onChange={(e) => setDp(e.target.value)} placeholder="mis. 500000" /></div>}
+              {type === "dp" && (
+                <div>
+                  <label>DP %</label>
+                  <input type="number" min="0" max="100" value={dpPct} onChange={(e) => setDpPct(e.target.value)} placeholder="mis. 50" />
+                  <div className="small muted" style={{ marginTop: 4 }}>= {fmtIDR(Math.round(order.total * (Number(dpPct) || 0) / 100))} · sisa {fmtIDR(order.total - Math.round(order.total * (Number(dpPct) || 0) / 100))}</div>
+                </div>
+              )}
               <div><label>Jatuh tempo (opsional)</label><input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></div>
             </div>
             <div style={{ marginTop: 12 }}>
