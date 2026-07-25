@@ -8,14 +8,31 @@ const pad = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const dLabel = (d) => `${d.getDate()} ${MON[d.getMonth()]}`;
-function mondayOf(dt) { const x = new Date(dt); const off = (x.getDay() + 6) % 7; x.setDate(x.getDate() - off); x.setHours(0, 0, 0, 0); return x; }
-function buildWeeks(n) {
-  const out = []; let m = mondayOf(new Date());
-  for (let i = 0; i < n; i++) {
-    const s = new Date(m), e = new Date(m); e.setDate(e.getDate() + 6);
-    out.push({ start: iso(s), end: iso(e), label: `${dLabel(s)} – ${dLabel(e)} ${e.getFullYear()}` });
-    m.setDate(m.getDate() - 7);
+// Minggu berbasis KALENDER BULAN (tidak lintas bulan):
+// W1 mulai tgl 1 (hari apa pun) → Minggu pertama; berikutnya Senin–Minggu;
+// minggu terakhir dipotong di akhir bulan. Contoh: 1 Juli = Rabu → W1 = Rabu–Minggu.
+function buildWeeks(nMonths) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const out = [];
+  for (let k = 0; k < nMonths; k++) {
+    const anchor = new Date(today.getFullYear(), today.getMonth() - k, 1);
+    const y = anchor.getFullYear(), mo = anchor.getMonth();
+    const lastDay = new Date(y, mo + 1, 0).getDate();
+    let day = 1, wno = 0;
+    while (day <= lastDay) {
+      wno++;
+      const s = new Date(y, mo, day);
+      const daysToSun = (7 - s.getDay()) % 7;          // getDay(): 0=Minggu
+      const endDay = Math.min(day + daysToSun, lastDay); // potong di akhir bulan
+      const e = new Date(y, mo, endDay);
+      out.push({
+        start: iso(s), end: iso(e), wno, month: mo, year: y,
+        label: `${MON[mo]} ${y} · W${wno} (${dLabel(s)} – ${dLabel(e)})`,
+      });
+      day = endDay + 1;
+    }
   }
+  out.sort((a, b) => (a.start < b.start ? 1 : a.start > b.start ? -1 : 0)); // terbaru dulu
   return out;
 }
 // label periode dari string ISO (untuk daftar/detail invoice tersimpan)
@@ -51,11 +68,15 @@ const StatusPill = ({ status }) => status === "submitted"
   : <span className="pill" style={{ background: "var(--accent-soft)", color: "var(--accent-ink)" }}>● Draft</span>;
 
 export default function Penagihan({ role }) {
-  const weeks = useMemo(() => buildWeeks(14), []);
+  const weeks = useMemo(() => buildWeeks(6), []);
   const [view, setView] = useState("invoice");     // 'invoice' | 'list' | 'setting'
   const [stores, setStores] = useState([]);
   const [store, setStore] = useState("");
-  const [wIdx, setWIdx] = useState(1);              // default minggu lalu (index 1)
+  const [wIdx, setWIdx] = useState(() => {          // default: minggu selesai terbaru
+    const t = iso(new Date());
+    const i = weeks.findIndex((w) => w.end < t);
+    return i >= 0 ? i : 0;
+  });
   const [priceTiers, setPriceTiers] = useState([]);
   const [discTiers, setDiscTiers] = useState([]);
   const [nameMap, setNameMap] = useState({});       // sku -> nama produk (bersih)
@@ -214,7 +235,11 @@ export default function Penagihan({ role }) {
             <div style={{ minWidth: 240 }}>
               <label>Periode (minggu)</label>
               <select value={wIdx} onChange={(e) => setWIdx(Number(e.target.value))}>
-                {weeks.map((w, i) => <option key={w.start} value={i}>{w.label}{i === 0 ? " (berjalan)" : ""}</option>)}
+                {weeks.map((w, i) => {
+                  const t = iso(new Date());
+                  const cur = t >= w.start && t <= w.end;
+                  return <option key={w.start} value={i}>{w.label}{cur ? " (berjalan)" : ""}</option>;
+                })}
               </select>
             </div>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
