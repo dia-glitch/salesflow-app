@@ -157,13 +157,24 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
   const [customerId, setCustomerId] = useState("");
   const [orderDate, setOrderDate] = useState(todayISO());
   const [note, setNote] = useState("");
-  const [rows, setRows] = useState([{ sku: "", qty: 1, unit_price: "" }]);
+  const [rows, setRows] = useState([{ sku: "", qty: 1, disc: "", unit_price: "" }]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
   function setRow(i, patch) { setRows((rs) => rs.map((r, j) => j === i ? { ...r, ...patch } : r)); }
-  function onSku(i, sku) { const m = skuMap[sku]; setRow(i, { sku, unit_price: m ? m.retail : "" }); }
-  const addRow = () => setRows((rs) => [...rs, { sku: "", qty: 1, unit_price: "" }]);
+  function onSku(i, sku) { const m = skuMap[sku]; setRow(i, { sku, disc: m ? 0 : "", unit_price: m ? m.retail : "" }); }
+  // Diskon % ↔ harga jual/unit saling sinkron dari retail
+  function onDisc(i, v) {
+    const retail = skuMap[rows[i]?.sku]?.retail || 0;
+    const up = retail > 0 ? Math.round(retail * (1 - (Number(v) || 0) / 100)) : "";
+    setRow(i, { disc: v, unit_price: up });
+  }
+  function onUnitPrice(i, v) {
+    const retail = skuMap[rows[i]?.sku]?.retail || 0;
+    const d = retail > 0 ? Math.round((1 - (Number(v) || 0) / retail) * 1000) / 10 : 0;
+    setRow(i, { unit_price: v, disc: d });
+  }
+  const addRow = () => setRows((rs) => [...rs, { sku: "", qty: 1, disc: "", unit_price: "" }]);
   const delRow = (i) => setRows((rs) => rs.filter((_, j) => j !== i));
 
   const calc = rows.map((r) => {
@@ -221,7 +232,7 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <table>
           <thead><tr>
-            <th>Produk</th><th className="num">Qty</th><th className="num">Retail</th><th className="num">Harga jual/unit</th>
+            <th>Produk</th><th className="num">Qty</th><th className="num">Retail</th><th className="num">Diskon %</th><th className="num">Harga jual/unit</th>
             <th className="num">Total baris</th><th></th>
           </tr></thead>
           <tbody>
@@ -235,7 +246,8 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
                   </td>
                   <td><input className="num" type="number" min="1" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} style={{ width: 70 }} /></td>
                   <td className="num">{c.retail ? fmtIDR(c.retail) : "—"}</td>
-                  <td><input className="num" type="number" min="0" value={r.unit_price} onChange={(e) => setRow(i, { unit_price: e.target.value })} style={{ width: 120 }} /></td>
+                  <td><input className="num" type="number" min="0" max="100" value={r.disc} onChange={(e) => onDisc(i, e.target.value)} style={{ width: 80 }} placeholder="0" disabled={!c.retail} /></td>
+                  <td><input className="num" type="number" min="0" value={r.unit_price} onChange={(e) => onUnitPrice(i, e.target.value)} style={{ width: 120 }} /></td>
                   <td className="num" style={{ fontWeight: 700 }}>{fmtIDR(c.lineTotal)}</td>
                   <td className="num"><button className="x" onClick={() => delRow(i)}>✕</button></td>
                 </tr>
