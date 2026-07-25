@@ -85,3 +85,21 @@ td input{padding:7px 8px}
 .total{font-family:var(--serif);font-size:20px;font-weight:700;letter-spacing:-.4px}
 .spacer{height:8px}
 .center-msg{color:var(--sub);padding:40px;text-align:center}
+
+/* ---- modal detail AR ---- */
+.ar-overlay{position:fixed;inset:0;background:rgba(11,11,13,.42);display:flex;align-items:flex-start;
+  justify-content:center;padding:40px 20px;z-index:60;overflow:auto}
+.ar-modal{background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(11,11,13,.28);
+  padding:22px 24px;width:100%;max-width:920px}
+
+/* ---- cetak dokumen AR: hanya area .ar-print yang tampil ---- */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff}
+  body *{visibility:hidden!important}
+  .ar-print,.ar-print *{visibility:visible!important}
+  .ar-overlay{position:static;padding:0;background:none;display:block;overflow:visible}
+  .ar-modal{box-shadow:none;border-radius:0;max-width:none;padding:0}
+  .ar-print{position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none!important}
+}
