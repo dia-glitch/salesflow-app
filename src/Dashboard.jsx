@@ -123,7 +123,7 @@ export default function Dashboard({ role }) {
     let sale = 0, qty = 0, onlineActual = 0;
     let normalSale = 0, discSale = 0, normalQty = 0, discQty = 0;
     const byGroup = { Online: 0, Offline: 0 };
-    const byLoc = {}, byDay = {}, storeActual = {};
+    const byLoc = {}, byChannel = {}, byDay = {}, storeActual = {};
     inMonth.forEach((r) => {
       const net = Number(r.net_amount) || 0;
       const q = (Number(r.qty) || 0) * (net < 0 ? -1 : 1);
@@ -134,6 +134,8 @@ export default function Dashboard({ role }) {
       else onlineActual += net;
       const ln = locMap[r.location_id] || r.location_id;
       byLoc[ln] = (byLoc[ln] || 0) + net;
+      const chn = (chMap[r.channel_id] || {}).name || r.channel_id;
+      byChannel[chn] = (byChannel[chn] || 0) + net;
       const day = Number(r.txn_date.slice(8, 10));
       byDay[day] = (byDay[day] || 0) + net;
       // komposisi harga normal vs diskon (hanya penjualan, retur diabaikan)
@@ -147,7 +149,7 @@ export default function Dashboard({ role }) {
     const daily = [];
     for (let d = 1; d <= period.dim; d++) daily.push({ d, v: byDay[d] || 0 });
     const avgDaily = period.elapsed > 0 ? sale / period.elapsed : 0;
-    return { sale, qty, onlineActual, storeActual, byGroup, byLoc, daily, avgDaily, projection: avgDaily * period.dim,
+    return { sale, qty, onlineActual, storeActual, byGroup, byLoc, byChannel, daily, avgDaily, projection: avgDaily * period.dim,
       normalSale, discSale, normalQty, discQty };
   }, [inMonth, chMap, locMap, period]);
 
@@ -271,8 +273,8 @@ export default function Dashboard({ role }) {
   if (error) return <div className="card err-card">Gagal memuat: {error}</div>;
 
   const grpTotal = (m.byGroup.Online + m.byGroup.Offline) || 1;
-  const locMax = Math.max(...Object.values(m.byLoc), 1);
-  const locEntries = Object.entries(m.byLoc).sort((a, b) => b[1] - a[1]);
+  const locMax = Math.max(...Object.values(m.byChannel), 1);
+  const locEntries = Object.entries(m.byChannel).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
@@ -477,7 +479,7 @@ export default function Dashboard({ role }) {
 
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <div className="section-label">Sales per lokasi{locEntries.length > 0 ? ` (${locEntries.length})` : ""}</div>
+                <div className="section-label">Sales per channel{locEntries.length > 0 ? ` (${locEntries.length})` : ""}</div>
                 {locEntries.length > 5 && (
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowAllLoc((v) => !v)}>
                     {showAllLoc ? "Ciutkan" : "Lihat semua"}
@@ -496,7 +498,7 @@ export default function Dashboard({ role }) {
                   ))
                 )}
                 {!showAllLoc && locEntries.length > 5 && (
-                  <div className="small muted" style={{ marginTop: 4 }}>+{locEntries.length - 5} lokasi lain — klik “Lihat semua”.</div>
+                  <div className="small muted" style={{ marginTop: 4 }}>+{locEntries.length - 5} channel lain — klik “Lihat semua”.</div>
                 )}
               </div>
             </div>
