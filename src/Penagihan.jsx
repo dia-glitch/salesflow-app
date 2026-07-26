@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
-import { loadPrefixes } from "./prefixes.js";
+import { loadPrefixes, renderNumber, numberStem } from "./prefixes.js";
 
 /* ---------- date helpers (Senin–Minggu) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -46,12 +46,14 @@ function fmtPeriod(startISO, endISO) {
 function storeCode(loc) {
   return String(loc || "").replace(/^(store|st|toko)[-_ ]?/i, "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8) || "STORE";
 }
-// nomor AR urut per store: <prefix>-<kodestore>-001 (prefix dari master data)
+// nomor AR urut per store mengikuti master (prefix + format), mis. AR-<store>-001
 async function nextArNo(loc) {
   const p = await loadPrefixes();
-  const prefix = `${p.consign_ar}-${storeCode(loc)}-`;
-  const { count } = await supabase.from("sf_ar_invoices").select("id", { count: "exact", head: true }).eq("location_id", loc);
-  return `${prefix}${String((count || 0) + 1).padStart(3, "0")}`;
+  const cfg = p.consign_ar;
+  const code = storeCode(loc);
+  const stem = numberStem(cfg.prefix, cfg.format, { store: code });
+  const { count } = await supabase.from("sf_ar_invoices").select("id", { count: "exact", head: true }).like("ar_no", `${stem}%`);
+  return renderNumber(cfg.prefix, cfg.format, { store: code, seq: (count || 0) + 1 });
 }
 
 /* ---------- margin classification ---------- */

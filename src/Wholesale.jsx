@@ -2,18 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
-import { loadPrefixes } from "./prefixes.js";
+import { loadPrefixes, renderNumber, numberStem } from "./prefixes.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-// Nomor order urut per tanggal: <prefix>-YYMMDD-001 (prefix dari master data)
+// Nomor order urut mengikuti master (prefix + format), mis. DO-YYMMDD-001
 async function nextOrderNo() {
   const p = await loadPrefixes();
-  const d = new Date();
-  const stamp = `${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  const prefix = `${p.wholesale_order}-${stamp}-`;
-  const { count } = await supabase.from("sf_do_orders").select("id", { count: "exact", head: true }).like("order_no", `${prefix}%`);
-  return `${prefix}${String((count || 0) + 1).padStart(3, "0")}`;
+  const cfg = p.wholesale_order;
+  const now = new Date();
+  const stem = numberStem(cfg.prefix, cfg.format, { date: now });
+  const { count } = await supabase.from("sf_do_orders").select("id", { count: "exact", head: true }).like("order_no", `${stem}%`);
+  return renderNumber(cfg.prefix, cfg.format, { date: now, seq: (count || 0) + 1 });
 }
 const STATUS_PILL = {
   draft: { bg: "var(--surface2)", c: "var(--sub)", t: "Draft" },
@@ -582,7 +582,7 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     try {
       const p = await loadPrefixes();
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: (isDp ? p.inv_dp : p.inv_full) + order.order_no, type: isDp ? "dp" : "full",
+        order_id: order.id, invoice_no: (isDp ? p.inv_dp.prefix : p.inv_full.prefix) + order.order_no, type: isDp ? "dp" : "full",
         total: amount, dp_amount: isDp ? amount : 0, paid_amount: 0, balance: amount, status: "issued", due_date: due || null,
       });
       if (error) throw error;
@@ -598,7 +598,7 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     try {
       const p = await loadPrefixes();
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: p.inv_ln + order.order_no, type: "settlement",
+        order_id: order.id, invoice_no: p.inv_ln.prefix + order.order_no, type: "settlement",
         total: settleAmount, dp_amount: 0, paid_amount: 0, balance: settleAmount, status: "issued", due_date: null,
       });
       if (error) throw error;
