@@ -576,7 +576,7 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     setBusy(true); setMsg(null);
     try {
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: (isDp ? "INV-DP-" : "INV-") + order.order_no, type: isDp ? "dp" : "full",
+        order_id: order.id, invoice_no: (isDp ? "INV/DP/" : "INV/") + order.order_no, type: isDp ? "dp" : "full",
         total: amount, dp_amount: isDp ? amount : 0, paid_amount: 0, balance: amount, status: "issued", due_date: due || null,
       });
       if (error) throw error;
@@ -591,7 +591,7 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     setBusy(true); setMsg(null);
     try {
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: "INV-LNS-" + order.order_no, type: "settlement",
+        order_id: order.id, invoice_no: "INV/LN/" + order.order_no, type: "settlement",
         total: settleAmount, dp_amount: 0, paid_amount: 0, balance: settleAmount, status: "issued", due_date: null,
       });
       if (error) throw error;
@@ -654,29 +654,12 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
   );
 }
 
-/* satu kartu invoice: ringkasan + pembayaran + submit finance */
+/* satu kartu invoice: ringkasan + submit finance (pembayaran diproses di FINFLOW) */
 function InvoiceCard({ inv, pays, canDo, onChange }) {
-  const [payAmt, setPayAmt] = useState("");
-  const [method, setMethod] = useState("transfer");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const typeLabel = inv.type === "dp" ? "DP" : inv.type === "settlement" ? "Pelunasan" : "Full";
 
-  async function addPayment() {
-    if (busy) return;
-    const amt = Number(payAmt) || 0;
-    if (amt <= 0) { setMsg({ m: "Nominal tidak valid." }); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const paid = Number(inv.paid_amount) + amt;
-      const balance = Math.max(0, Number(inv.total) - paid);
-      const status = balance <= 0 ? "paid" : "dp_paid";
-      const { error } = await supabase.from("sf_do_payments").insert({ invoice_id: inv.id, amount: amt, method, kind: inv.type === "dp" ? "dp" : "settlement" });
-      if (error) throw error;
-      await supabase.from("sf_do_invoices").update({ paid_amount: paid, balance, status }).eq("id", inv.id);
-      setPayAmt(""); onChange();
-    } catch (e) { setMsg({ m: "Gagal: " + (e.message || "") }); } finally { setBusy(false); }
-  }
   async function submitFinance() {
     if (busy) return; setBusy(true);
     try { await supabase.from("sf_do_invoices").update({ status: "submitted", submitted_at: new Date().toISOString() }).eq("id", inv.id); onChange(); }
@@ -701,19 +684,13 @@ function InvoiceCard({ inv, pays, canDo, onChange }) {
           <tbody>{pays.map((p) => <tr key={p.id}><td>{p.paid_at}</td><td>{p.method || "—"}</td><td className="num strong">{fmtIDR(p.amount)}</td></tr>)}</tbody>
         </table>
       )}
-      {canDo && inv.balance > 0 && inv.status !== "submitted" && (
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div><label>Catat pembayaran</label><input type="number" min="0" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} placeholder="nominal" style={{ width: 150 }} /></div>
-          <div><label>Metode</label><select value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: 120 }}><option value="transfer">Transfer</option><option value="cash">Cash</option><option value="other">Lainnya</option></select></div>
-          <button className="btn btn-primary" onClick={addPayment} disabled={busy}>Tambah</button>
-        </div>
-      )}
       {canDo && inv.status !== "submitted" && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
-          <button className="btn btn-ghost btn-sm" onClick={submitFinance} disabled={busy}>Submit ke Finance</button>
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn btn-primary btn-sm" onClick={submitFinance} disabled={busy}>Submit ke Finance</button>
+          <span className="small muted">Pembayaran &amp; perubahan status diproses di FINFLOW.</span>
         </div>
       )}
-      {inv.status === "submitted" && <p className="small muted" style={{ marginTop: 10 }}>✓ Sudah di-submit ke Finance.</p>}
+      {inv.status === "submitted" && <p className="small muted" style={{ marginTop: 10 }}>✓ Sudah di-submit ke Finance. Pembayaran diproses di FINFLOW.</p>}
     </div>
   );
 }

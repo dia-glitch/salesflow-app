@@ -175,7 +175,7 @@ begin
        ln.retail_price, ln.unit_price,
        greatest(ln.retail_price - ln.unit_price, 0) * v_qty,
        ln.unit_price * v_qty, v_basis, 0,
-       'DO-' || o.order_no || '-' || replace(gen_random_uuid()::text, '-', ''))
+       o.order_no || '-' || left(replace(gen_random_uuid()::text, '-', ''), 6))
     returning id into v_fact;
 
     insert into cf_stock_movements
