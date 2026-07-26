@@ -335,6 +335,12 @@ export default function InputManual({ role }) {
         </p>
       </div>
 
+      {!isKol && channel && channel.kind === "online" && !["reseller", "direct_purchase"].includes(channelId) && (
+        <div className="card" style={{ background: "var(--paper)" }}>
+          <span className="small muted">📅 Penjualan <b>marketplace</b> idealnya di-upload lengkap <b>1× per hari</b> untuk hari yang sudah tutup — bukan input satuan berulang di hari yang sama. Ini menjaga pengakuan AR &amp; disbursement di FinFlow tetap rapi (agregat per channel per hari).</span>
+        </div>
+      )}
+
       <div className="card">
         <div className="section-label">Baris penjualan</div>
         <table style={{ marginTop: 8 }}>

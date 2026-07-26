@@ -302,6 +302,10 @@ export default function UploadFile({ role }) {
       <h1 className="title">Upload penjualan</h1>
       <p className="lead">Unggah file Excel/CSV → pratinjau → simpan ke staging → proses jadi penjualan.</p>
 
+      <div className="card" style={{ background: "var(--paper)" }}>
+        <span className="small muted">📅 <b>Penjualan marketplace:</b> upload <b>lengkap 1× per hari</b> untuk hari yang <b>sudah tutup</b> (tarik laporan penuh dari channel), jangan sepotong-sepotong di hari yang sama. Ini menjaga pengakuan AR &amp; disbursement di FinFlow tetap rapi — piutang marketplace diagregat per channel per hari.</span>
+      </div>
+
       <div className="card">
         <div className="grid3">
           <div>
