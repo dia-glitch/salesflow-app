@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, todayISO } from "./format.js";
 import { canAct } from "./permissions.js";
-import { loadChannelPrefixes } from "./prefixes.js";
+import { loadChannelPrefixes, yymmdd, lastOrderSeq } from "./prefixes.js";
 
 const norm = (k) => String(k).trim().toLowerCase().replace(/\s+/g, "_");
 const ALIASES = {
@@ -240,9 +240,14 @@ export default function UploadFile({ role }) {
     const okRows = parsed.filter((r) => r.ok);
     if (okRows.length === 0) { setSaveMsg({ type: "err", text: "Tidak ada baris valid untuk disimpan." }); return; }
     const stamp = Date.now();
-    let idx = 0;
+    // nomor urut bersih per (channel, tanggal): <prefix><YYMMDD>-<seq>, lanjut dari DB (anti-dobel)
+    const baseOf = (r) => (chPfx[r.channel_id] || "UPL-") + yymmdd(r.date || date) + "-";
+    const groups = {};
+    okRows.forEach((r) => { const b = baseOf(r); groups[r.channel_id + "|" + b] = { channel: r.channel_id, base: b }; });
+    const seq = {};
+    for (const k of Object.keys(groups)) seq[k] = await lastOrderSeq(groups[k].channel, groups[k].base);
     const payload = okRows.map((r) => {
-      idx++;
+      const b = baseOf(r); const k = r.channel_id + "|" + b; seq[k] += 1;
       return {
         source: "upload",
         file_label: (fileName || "upload") + "-" + stamp,
@@ -258,7 +263,7 @@ export default function UploadFile({ role }) {
           sale_at_price: r.price,
           discount: r.disc,
           order_ref: r.order_ref || null,
-          source_txn_id: (chPfx[r.channel_id] || "UPL-") + stamp + "-" + idx,
+          source_txn_id: b + seq[k],
         },
       };
     });

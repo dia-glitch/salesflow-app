@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
-import { loadChannelPrefixes } from "./prefixes.js";
+import { loadChannelPrefixes, yymmdd, lastOrderSeq } from "./prefixes.js";
 
 const emptyRow = () => ({ sku: "", name: "", retail: "", qty: 1, price: "", disc: 0 });
 
@@ -99,7 +99,7 @@ export default function InputManual({ role }) {
     : offline ? `Channel toko → stok berkurang di store yang dipilih · basis net: ${channel.default_net_basis}`
     : `Channel online → stok dari ${channel.fulfill_location_id} · basis net: ${channel.default_net_basis}`;
 
-  function buildPayload() {
+  function buildPayload(base, startSeq) {
     const loc = activeLoc;
     const stamp = Date.now();
     let idx = 0;
@@ -123,7 +123,7 @@ export default function InputManual({ role }) {
             discount: Number(r.disc) || 0,
             txn_type: txnType,
             order_ref: orderRef.trim() || null,
-            source_txn_id: (txnType === "return" ? "RET-" : (chPfx[channelId] || "MAN-")) + stamp + "-" + idx,
+            source_txn_id: base + (startSeq + idx),   // <prefix><YYMMDD>-<seq>
           },
         };
       });
@@ -134,7 +134,9 @@ export default function InputManual({ role }) {
     if (submitLock.current || busy) return; // double klik tidak akan tercatat 2x
     setSaveMsg(null);
 
-    const payload = buildPayload();
+    const base = (txnType === "return" ? "RET-" : (chPfx[channelId] || "MAN-")) + yymmdd(date) + "-";
+    const startSeq = await lastOrderSeq(channelId, base);   // lanjut dari nomor terakhir (anti-dobel)
+    const payload = buildPayload(base, startSeq);
     if (payload.length === 0) {
       setSaveMsg({ type: "err", text: "Tidak ada baris dengan SKU." });
       return;

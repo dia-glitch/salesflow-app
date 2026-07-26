@@ -60,3 +60,21 @@ export async function loadChannelPrefixes() {
   } catch { /* kosong */ }
   return m;
 }
+
+// "YYYY-MM-DD" atau Date → "YYMMDD"
+export function yymmdd(d) {
+  const s = typeof d === "string" ? d : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return String(s).slice(2).replace(/-/g, "");
+}
+
+// nomor urut terakhir dari source_txn_id untuk (channel, base) di cf_sales_fact
+// base = "<prefix><YYMMDD>-" ; mengembalikan angka terbesar setelah "-".
+export async function lastOrderSeq(channelId, base) {
+  let max = 0;
+  try {
+    const { data } = await supabase.from("cf_sales_fact")
+      .select("source_txn_id").eq("channel_id", channelId).ilike("source_txn_id", base + "%").limit(2000);
+    (data || []).forEach((x) => { const m = String(x.source_txn_id).match(/-(\d+)$/); if (m) max = Math.max(max, Number(m[1]) || 0); });
+  } catch { /* ignore */ }
+  return max;
+}
