@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
+import { loadPrefixes } from "./prefixes.js";
 
 /* ---------- date helpers (Senin–Minggu) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -41,10 +42,16 @@ function fmtPeriod(startISO, endISO) {
   const s = new Date(startISO + "T00:00:00"), e = new Date((endISO || startISO) + "T00:00:00");
   return `${dLabel(s)} – ${dLabel(e)} ${e.getFullYear()}`;
 }
-// nomor AR yang mudah dibaca & deterministik (unik per store+minggu)
-function makeArNo(loc, startISO) {
-  const code = String(loc || "").replace(/^(store|st|toko)[-_ ]?/i, "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8) || "STORE";
-  return `AR-${String(startISO).replace(/-/g, "")}-${code}`;
+// kode store dari location_id (buang awalan store/st/toko)
+function storeCode(loc) {
+  return String(loc || "").replace(/^(store|st|toko)[-_ ]?/i, "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8) || "STORE";
+}
+// nomor AR urut per store: <prefix>-<kodestore>-001 (prefix dari master data)
+async function nextArNo(loc) {
+  const p = await loadPrefixes();
+  const prefix = `${p.consign_ar}-${storeCode(loc)}-`;
+  const { count } = await supabase.from("sf_ar_invoices").select("id", { count: "exact", head: true }).eq("location_id", loc);
+  return `${prefix}${String((count || 0) + 1).padStart(3, "0")}`;
 }
 
 /* ---------- margin classification ---------- */
@@ -158,7 +165,7 @@ export default function Penagihan({ role }) {
     setBusy(true); setMsg(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const arNo = existing?.ar_no || makeArNo(store, wk.start);
+      const arNo = existing?.ar_no || await nextArNo(store);
       const head = {
         period_end: wk.end, status, ar_no: arNo,
         total_sale: tot.sale, total_margin: tot.margin, total_ar: tot.ar, n_lines: lines.length,

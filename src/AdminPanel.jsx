@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { canAct } from "./permissions.js";
 
 const ROLES = ["admin", "bi", "md_sales", "finance", "manager", "director", "rnd", "store_ops"];
 const ROLE_LABEL = {
@@ -103,6 +104,71 @@ export default function AdminPanel() {
           Untuk mengundang user baru: <b>Supabase Dashboard → Authentication → Users → Invite user</b>.
           Role bisa diset di sini setelah user menerima undangan & login pertama kali.
         </span>
+      </div>
+
+      <PrefixMaster />
+    </div>
+  );
+}
+
+function PrefixMaster() {
+  const [rows, setRows] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [savingKey, setSavingKey] = useState("");
+  const [err, setErr] = useState("");
+  const canEdit = canAct("doc_prefix");
+
+  async function load() {
+    const { data, error } = await supabase.from("sf_doc_prefixes").select("*").order("key");
+    if (error) { setErr(error.message); setRows([]); return; }
+    setRows(data || []);
+    const d = {}; (data || []).forEach((r) => (d[r.key] = r.prefix)); setDraft(d);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function save(key) {
+    setSavingKey(key); setErr("");
+    const { error } = await supabase.from("sf_doc_prefixes").update({ prefix: (draft[key] || "").trim(), updated_at: new Date().toISOString() }).eq("key", key);
+    setSavingKey("");
+    if (error) { setErr("Gagal: " + error.message); return; }
+    load();
+  }
+
+  if (rows === null) return null;
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 16 }}>
+      <div style={{ padding: "16px 18px" }}>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 18, fontWeight: 600 }}>Master Prefix Dokumen</div>
+        <p className="small muted" style={{ margin: "4px 0 0" }}>Prefix penomoran (order, AR, invoice) — tersimpan di DB, tidak hardcode. Berlaku untuk dokumen baru; nomor lama tidak berubah.</p>
+      </div>
+      {err && <div className="card err-card" style={{ margin: "0 18px 12px" }}>{err}</div>}
+      <div style={{ overflowX: "auto" }}>
+        <table>
+          <thead><tr>
+            <th style={{ padding: "10px 18px" }}>Dokumen</th>
+            <th style={{ padding: "10px 18px" }}>Prefix</th>
+            <th style={{ padding: "10px 18px" }}>Contoh</th>
+            {canEdit && <th style={{ padding: "10px 18px" }}></th>}
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td style={{ padding: "12px 18px" }}><b>{r.label || r.key}</b><div className="muted small mono">{r.key}</div></td>
+                <td style={{ padding: "12px 18px" }}>
+                  {canEdit
+                    ? <input value={draft[r.key] ?? ""} onChange={(e) => setDraft((d) => ({ ...d, [r.key]: e.target.value }))} style={{ width: 140, fontFamily: "monospace" }} />
+                    : <span className="mono">{r.prefix}</span>}
+                </td>
+                <td style={{ padding: "12px 18px" }} className="muted small mono">{r.pattern || "—"}</td>
+                {canEdit && <td style={{ padding: "12px 18px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <button className="btn btn-primary" disabled={savingKey === r.key || (draft[r.key] || "").trim() === r.prefix} onClick={() => save(r.key)}>{savingKey === r.key ? "…" : "Simpan"}</button>
+                </td>}
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={canEdit ? 4 : 3} className="center-msg">Master prefix belum ada — jalankan sql/sf_doc_prefixes.sql.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

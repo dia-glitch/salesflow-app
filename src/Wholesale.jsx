@@ -2,14 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
+import { loadPrefixes } from "./prefixes.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-function makeOrderNo() {
+// Nomor order urut per tanggal: <prefix>-YYMMDD-001 (prefix dari master data)
+async function nextOrderNo() {
+  const p = await loadPrefixes();
   const d = new Date();
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  const rnd = Math.floor(Math.random() * 9000 + 1000);
-  return `DO-${stamp}-${rnd}`;
+  const stamp = `${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const prefix = `${p.wholesale_order}-${stamp}-`;
+  const { count } = await supabase.from("sf_do_orders").select("id", { count: "exact", head: true }).like("order_no", `${prefix}%`);
+  return `${prefix}${String((count || 0) + 1).padStart(3, "0")}`;
 }
 const STATUS_PILL = {
   draft: { bg: "var(--surface2)", c: "var(--sub)", t: "Draft" },
@@ -283,8 +287,9 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
     setBusy(true); setMsg(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const order_no = await nextOrderNo();
       const { data: ord, error } = await supabase.from("sf_do_orders").insert({
-        order_no: makeOrderNo(), customer_id: customerId, order_date: orderDate,
+        order_no, customer_id: customerId, order_date: orderDate,
         fulfill_location_id: whLoc || "WH-MAIN", status: "draft",
         subtotal, discount, total, note: note.trim() || null, created_by: user?.id || null,
       }).select().single();
@@ -575,8 +580,9 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     if (isDp && amount <= 0) { setMsg({ t: "err", m: "Isi DP % dulu." }); return; }
     setBusy(true); setMsg(null);
     try {
+      const p = await loadPrefixes();
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: (isDp ? "INV/DP/" : "INV/") + order.order_no, type: isDp ? "dp" : "full",
+        order_id: order.id, invoice_no: (isDp ? p.inv_dp : p.inv_full) + order.order_no, type: isDp ? "dp" : "full",
         total: amount, dp_amount: isDp ? amount : 0, paid_amount: 0, balance: amount, status: "issued", due_date: due || null,
       });
       if (error) throw error;
@@ -590,8 +596,9 @@ function InvoicePanel({ order, invoices, paysByInv, deliveredValue, orderClosed,
     if (settleAmount <= 0) { setMsg({ t: "err", m: "Tidak ada sisa untuk ditagih (DP sudah menutupi barang terkirim)." }); return; }
     setBusy(true); setMsg(null);
     try {
+      const p = await loadPrefixes();
       const { error } = await supabase.from("sf_do_invoices").insert({
-        order_id: order.id, invoice_no: "INV/LN/" + order.order_no, type: "settlement",
+        order_id: order.id, invoice_no: p.inv_ln + order.order_no, type: "settlement",
         total: settleAmount, dp_amount: 0, paid_amount: 0, balance: settleAmount, status: "issued", due_date: null,
       });
       if (error) throw error;
