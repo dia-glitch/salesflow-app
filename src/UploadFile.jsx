@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, todayISO } from "./format.js";
 import { canAct } from "./permissions.js";
+import { loadChannelPrefixes } from "./prefixes.js";
 
 const norm = (k) => String(k).trim().toLowerCase().replace(/\s+/g, "_");
 const ALIASES = {
@@ -85,6 +86,7 @@ export default function UploadFile({ role }) {
   const [saveMsg, setSaveMsg] = useState(null);
   const [procMsg, setProcMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [chPfx, setChPfx] = useState({});   // {channel_id: prefix} dari master
 
   useEffect(() => {
     (async () => {
@@ -108,6 +110,7 @@ export default function UploadFile({ role }) {
         setChannels(ch.data || []);
         setLocations((loc.data || []).filter((l) => l.is_active !== false));
         setSkuMap(map);
+        setChPfx(await loadChannelPrefixes());
         const firstCh = (ch.data || [])[0];
         if (firstCh) setChannelId(firstCh.channel_id);
         const firstStore = (loc.data || []).find((l) => l.type === "store");
@@ -255,7 +258,7 @@ export default function UploadFile({ role }) {
           sale_at_price: r.price,
           discount: r.disc,
           order_ref: r.order_ref || null,
-          source_txn_id: "UPL-" + stamp + "-" + idx,
+          source_txn_id: (chPfx[r.channel_id] || "UPL-") + stamp + "-" + idx,
         },
       };
     });

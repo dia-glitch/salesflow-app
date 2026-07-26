@@ -46,3 +46,17 @@ export function numberStem(prefix, format, ctx = {}) {
   const before = String(format || "").split(/\{SEQ/)[0];
   return renderNumber(prefix, before, ctx);
 }
+
+// ---- Prefix per channel penjualan (untuk source_txn_id Input/Upload sales) ----
+export const chKey = (channelId) => "ch_" + channelId;
+
+// {channel_id: prefix} dari sf_doc_prefixes (key 'ch_<channel_id>')
+export async function loadChannelPrefixes() {
+  const m = {};
+  try {
+    const { data, error } = await supabase.from("sf_doc_prefixes").select("key,prefix").like("key", "ch\\_%");
+    if (error) throw error;
+    (data || []).forEach((r) => { if (r.prefix) m[r.key.slice(3)] = r.prefix; });
+  } catch { /* kosong */ }
+  return m;
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { fmtIDR, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
+import { loadChannelPrefixes } from "./prefixes.js";
 
 const emptyRow = () => ({ sku: "", name: "", retail: "", qty: 1, price: "", disc: 0 });
 
@@ -24,6 +25,7 @@ export default function InputManual({ role }) {
   const [busy, setBusy] = useState(false);
   const submitLock = useRef(false); // cegah double-submit (double klik) sebelum re-render
   const [stock, setStock] = useState({});
+  const [chPfx, setChPfx] = useState({});   // {channel_id: prefix} dari master
 
   useEffect(() => {
     (async () => {
@@ -55,6 +57,7 @@ export default function InputManual({ role }) {
         setSkuList(list);
         setSkuMap(map);
 
+        setChPfx(await loadChannelPrefixes());
         const firstCh = (ch.data || [])[0];
         if (firstCh) setChannelId(firstCh.channel_id);
         const firstStore = (loc.data || []).find((l) => l.type === "store");
@@ -120,7 +123,7 @@ export default function InputManual({ role }) {
             discount: Number(r.disc) || 0,
             txn_type: txnType,
             order_ref: orderRef.trim() || null,
-            source_txn_id: (txnType === "return" ? "RET-" : "MAN-") + stamp + "-" + idx,
+            source_txn_id: (txnType === "return" ? "RET-" : (chPfx[channelId] || "MAN-")) + stamp + "-" + idx,
           },
         };
       });

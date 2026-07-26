@@ -1,22 +1,45 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 import { canAct } from "./permissions.js";
-import { renderNumber } from "./prefixes.js";
+import { renderNumber, chKey } from "./prefixes.js";
 
 export default function DocPrefix({ role }) {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});   // key -> {prefix, number_format}
   const [savingKey, setSavingKey] = useState("");
   const [err, setErr] = useState("");
+  // channel penjualan
+  const [channels, setChannels] = useState([]);
+  const [chDraft, setChDraft] = useState({}); // channel_id -> prefix
+  const [savingCh, setSavingCh] = useState("");
   const canEdit = canAct(role, "doc_prefix");
 
   async function load() {
-    const { data, error } = await supabase.from("sf_doc_prefixes").select("*").order("key");
-    if (error) { setErr(error.message); setRows([]); return; }
-    setRows(data || []);
-    const d = {}; (data || []).forEach((r) => (d[r.key] = { prefix: r.prefix || "", number_format: r.number_format || "" })); setDraft(d);
+    const [pRes, cRes] = await Promise.all([
+      supabase.from("sf_doc_prefixes").select("*").order("key"),
+      supabase.from("cf_sales_channels").select("channel_id,name,kind").order("channel_id"),
+    ]);
+    if (pRes.error) { setErr(pRes.error.message); setRows([]); return; }
+    const all = pRes.data || [];
+    // baris dokumen sistem (bukan channel)
+    setRows(all.filter((r) => !r.key.startsWith("ch_")));
+    const d = {}; all.forEach((r) => { if (!r.key.startsWith("ch_")) d[r.key] = { prefix: r.prefix || "", number_format: r.number_format || "" }; }); setDraft(d);
+    // channel + prefixnya
+    const chPfxMap = {}; all.forEach((r) => { if (r.key.startsWith("ch_")) chPfxMap[r.key.slice(3)] = r.prefix || ""; });
+    setChannels(cRes.data || []);
+    const cd = {}; (cRes.data || []).forEach((c) => { cd[c.channel_id] = chPfxMap[c.channel_id] ?? ""; }); setChDraft(cd);
   }
   useEffect(() => { load(); }, []);
+
+  async function saveCh(channelId) {
+    setSavingCh(channelId); setErr("");
+    const pfx = (chDraft[channelId] || "").trim();
+    const ch = channels.find((c) => c.channel_id === channelId);
+    const { error } = await supabase.from("sf_doc_prefixes").upsert({ key: chKey(channelId), prefix: pfx, label: (ch?.name || channelId) + " (channel)", pattern: "source_txn_id", updated_at: new Date().toISOString() }, { onConflict: "key" });
+    setSavingCh("");
+    if (error) { setErr("Gagal: " + error.message); return; }
+    load();
+  }
 
   async function save(key) {
     setSavingKey(key); setErr("");
@@ -90,8 +113,46 @@ export default function DocPrefix({ role }) {
         </div>
       </div>
 
+      <h2 className="title" style={{ fontSize: 20, marginTop: 24 }}>Prefix per Channel Penjualan</h2>
+      <p className="lead" style={{ marginTop: 2 }}>Prefix No. Order internal (source_txn_id) untuk penjualan yang di-input/upload per channel — mis. online, reseller, marketplace. Kosong = pakai default (MAN-/UPL-). No. order asli marketplace tetap tersimpan di kolom Order Ref.</p>
+
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table>
+            <thead><tr>
+              <th style={{ padding: "10px 16px" }}>Channel</th>
+              <th style={{ padding: "10px 16px" }}>Tipe</th>
+              <th style={{ padding: "10px 16px" }}>Prefix No. Order</th>
+              <th style={{ padding: "10px 16px" }}>Contoh</th>
+              {canEdit && <th style={{ padding: "10px 16px" }}></th>}
+            </tr></thead>
+            <tbody>
+              {channels.map((c) => {
+                const pfx = chDraft[c.channel_id] ?? "";
+                return (
+                  <tr key={c.channel_id}>
+                    <td style={{ padding: "12px 16px" }}><b>{c.name || c.channel_id}</b><div className="muted small mono">{c.channel_id}</div></td>
+                    <td style={{ padding: "12px 16px" }} className="muted small">{c.kind || "—"}</td>
+                    <td style={{ padding: "12px 16px" }}>
+                      {canEdit
+                        ? <input value={pfx} onChange={(e) => setChDraft((d) => ({ ...d, [c.channel_id]: e.target.value }))} placeholder="mis. ONL-" style={{ width: 130, fontFamily: "monospace" }} />
+                        : <span className="mono">{pfx || <span className="muted">(default)</span>}</span>}
+                    </td>
+                    <td style={{ padding: "12px 16px" }} className="mono muted">{(pfx || "MAN-") + "260726-1"}</td>
+                    {canEdit && <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button className="btn btn-primary" disabled={savingCh === c.channel_id} onClick={() => saveCh(c.channel_id)}>{savingCh === c.channel_id ? "…" : "Simpan"}</button>
+                    </td>}
+                  </tr>
+                );
+              })}
+              {channels.length === 0 && <tr><td colSpan={canEdit ? 5 : 4} className="center-msg">Tidak ada channel (cf_sales_channels).</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="card" style={{ background: "var(--paper)", marginTop: 12 }}>
-        <span className="small muted">Yang dinomori otomatis oleh sistem: <b>Order Direct Purchase</b>, <b>Invoice DP/Pelunasan/Full</b>, dan <b>No. AR Konsinyasi</b>. Penjualan channel lain (offline/marketplace) memakai ID dari sumbernya (impor), jadi tidak dinomori di sini. Butuh channel tertentu dinomori sistem? beri tahu channel &amp; formatnya.</span>
+        <span className="small muted">Prefix channel dipakai untuk <b>source_txn_id</b> saat Input/Upload sales (identifikasi di log Penjualan). No. order asli dari marketplace tetap di kolom <b>Order Ref</b>. Direct Purchase &amp; Konsinyasi tetap pakai penomoran dokumen di atas.</span>
       </div>
     </div>
   );
