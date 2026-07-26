@@ -111,12 +111,17 @@ export default function AdminPanel() {
   );
 }
 
+const EMPTY_PFX = { key: "", prefix: "", label: "", pattern: "" };
+
 function PrefixMaster() {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});
   const [savingKey, setSavingKey] = useState("");
   const [err, setErr] = useState("");
+  const [nf, setNf] = useState({ ...EMPTY_PFX });
+  const [adding, setAdding] = useState(false);
   const canEdit = canAct("doc_prefix");
+  const cols = canEdit ? 4 : 3;
 
   async function load() {
     const { data, error } = await supabase.from("sf_doc_prefixes").select("*").order("key");
@@ -134,13 +139,32 @@ function PrefixMaster() {
     load();
   }
 
+  async function addRow() {
+    const key = nf.key.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    if (!key) { setErr("Isi kode/key dulu."); return; }
+    if (!nf.prefix.trim()) { setErr("Isi prefix dulu."); return; }
+    if ((rows || []).some((r) => r.key === key)) { setErr(`Key "${key}" sudah ada.`); return; }
+    setAdding(true); setErr("");
+    const { error } = await supabase.from("sf_doc_prefixes").insert({ key, prefix: nf.prefix.trim(), label: nf.label.trim() || null, pattern: nf.pattern.trim() || null });
+    setAdding(false);
+    if (error) { setErr("Gagal tambah: " + error.message); return; }
+    setNf({ ...EMPTY_PFX }); load();
+  }
+
+  async function delRow(key) {
+    setErr("");
+    const { error } = await supabase.from("sf_doc_prefixes").delete().eq("key", key);
+    if (error) { setErr("Gagal hapus: " + error.message); return; }
+    load();
+  }
+
   if (rows === null) return null;
 
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 16 }}>
       <div style={{ padding: "16px 18px" }}>
         <div style={{ fontFamily: "var(--serif)", fontSize: 18, fontWeight: 600 }}>Master Prefix Dokumen</div>
-        <p className="small muted" style={{ margin: "4px 0 0" }}>Prefix penomoran (order, AR, invoice) — tersimpan di DB, tidak hardcode. Berlaku untuk dokumen baru; nomor lama tidak berubah.</p>
+        <p className="small muted" style={{ margin: "4px 0 0" }}>Prefix penomoran (order, AR, invoice, channel lain) — tersimpan di DB, tidak hardcode. Bisa tambah/edit/hapus. Berlaku untuk dokumen baru; nomor lama tidak berubah.</p>
       </div>
       {err && <div className="card err-card" style={{ margin: "0 18px 12px" }}>{err}</div>}
       <div style={{ overflowX: "auto" }}>
@@ -163,10 +187,28 @@ function PrefixMaster() {
                 <td style={{ padding: "12px 18px" }} className="muted small mono">{r.pattern || "—"}</td>
                 {canEdit && <td style={{ padding: "12px 18px", textAlign: "right", whiteSpace: "nowrap" }}>
                   <button className="btn btn-primary" disabled={savingKey === r.key || (draft[r.key] || "").trim() === r.prefix} onClick={() => save(r.key)}>{savingKey === r.key ? "…" : "Simpan"}</button>
+                  <button className="btn btn-ghost" style={{ marginLeft: 6 }} onClick={() => delRow(r.key)}>Hapus</button>
                 </td>}
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={canEdit ? 4 : 3} className="center-msg">Master prefix belum ada — jalankan sql/sf_doc_prefixes.sql.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={cols} className="center-msg">Master prefix belum ada — jalankan sql/sf_doc_prefixes.sql.</td></tr>}
+            {canEdit && (
+              <tr style={{ background: "var(--paper)" }}>
+                <td style={{ padding: "12px 18px" }}>
+                  <input value={nf.label} onChange={(e) => setNf((s) => ({ ...s, label: e.target.value }))} placeholder="Nama dokumen (mis. Order Offline)" style={{ width: 200 }} />
+                  <input value={nf.key} onChange={(e) => setNf((s) => ({ ...s, key: e.target.value }))} placeholder="key (mis. offline_order)" style={{ width: 200, marginTop: 6, fontFamily: "monospace" }} />
+                </td>
+                <td style={{ padding: "12px 18px" }}>
+                  <input value={nf.prefix} onChange={(e) => setNf((s) => ({ ...s, prefix: e.target.value }))} placeholder="mis. OFF-" style={{ width: 140, fontFamily: "monospace" }} />
+                </td>
+                <td style={{ padding: "12px 18px" }}>
+                  <input value={nf.pattern} onChange={(e) => setNf((s) => ({ ...s, pattern: e.target.value }))} placeholder="contoh (opsional)" style={{ width: 160, fontFamily: "monospace" }} />
+                </td>
+                <td style={{ padding: "12px 18px", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <button className="btn btn-primary" disabled={adding} onClick={addRow}>{adding ? "…" : "+ Tambah"}</button>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
