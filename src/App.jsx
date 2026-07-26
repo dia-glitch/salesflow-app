@@ -7,6 +7,7 @@ import CollectionPerf from "./CollectionPerf.jsx";
 import InputManual from "./InputManual.jsx";
 import UploadFile from "./UploadFile.jsx";
 import AdminPanel from "./AdminPanel.jsx";
+import DocPrefix from "./DocPrefix.jsx";
 import AnalisaAI from "./AnalisaAI.jsx";
 import RestockNotif from "./RestockNotif.jsx";
 import KolReport from "./KolReport.jsx";
@@ -117,6 +118,7 @@ export default function App() {
           if (view === "ai") return <AnalisaAI />;
           if (view === "panduan") return <Panduan />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;
+          if (view === "prefix") return <DocPrefix role={role} />;
           if (view === "upload") return <UploadFile role={role} />;
           if (view === "input") return <InputManual role={role} />;
           return <Dashboard role={role} />;

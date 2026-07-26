@@ -25,11 +25,13 @@ const PAGE2RES = {
   wholesale:  "wholesale_order",
   skus:       "sku_master",
   admin:      "admin_panel",
+  prefix:     "doc_prefix",
   panduan:    "panduan",
 };
 
 // area aksi -> resource yang dicek can_act
 const AREA2RES = {
+  doc_prefix: ["doc_prefix"],               // edit master prefix dokumen
   penjualan: ["penjualan"],                 // ekspor CSV di halaman Penjualan
   input:     ["input_sales", "upload_sales"], // input + upload penjualan
   sku:       ["sku_master"],                // edit SKU master

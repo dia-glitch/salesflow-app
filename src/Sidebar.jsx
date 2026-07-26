@@ -37,6 +37,7 @@ const GROUPS = [
     title: "Admin panel",
     items: [
       { k: "admin", label: "Admin Panel", icon: "M12 15a3 3 0 100-6 3 3 0 000 6Z M19.4 13a7.5 7.5 0 000-2l2-1.5-2-3.4-2.3 1a7.5 7.5 0 00-1.7-1L15 3.2h-4l-.4 2.4a7.5 7.5 0 00-1.7 1l-2.3-1-2 3.4L4.6 11a7.5 7.5 0 000 2l-2 1.5 2 3.4 2.3-1a7.5 7.5 0 001.7 1l.4 2.4h4l.4-2.4a7.5 7.5 0 001.7-1l2.3 1 2-3.4-2-1.5Z" },
+      { k: "prefix", label: "Master Prefix", icon: "M4 7V4h16v3 M9 20h6 M12 4v16" },
     ],
   },
   {
