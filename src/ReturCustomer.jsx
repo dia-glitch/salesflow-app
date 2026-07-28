@@ -144,10 +144,19 @@ function BuatRetur({ channels, nameMap, onDone }) {
     if (!soRef.trim()) { setMsg({ t: "err", m: "Isi No. Sales Order dulu." }); return; }
     setSearching(true); setMsg(null); setCand(null);
     try {
-      const { data } = await supabase.from("cf_sales_fact")
-        .select("sku,qty,retail_price,sale_at_price,location_id,channel_id").eq("order_ref", soRef.trim());
-      const rows = (data || []).filter((r) => num(r.qty) > 0);
-      if (!rows.length) { setMsg({ t: "err", m: "SO tidak ditemukan di penjualan. Cek nomornya, atau tambahkan baris manual." }); setCand([]); return; }
+      // No. order bisa ada di order_ref (marketplace) ATAU source_txn_id (ID transaksi
+      // internal, mis. "MAN-...-2"). Cari keduanya + saudara sebatch (base tanpa -seq).
+      const t = soRef.trim();
+      const base = t.replace(/-\d+$/, "-");   // "MAN-1781498780460-2" -> "MAN-1781498780460-"
+      const sel = "id,sku,qty,retail_price,sale_at_price,location_id,channel_id";
+      const queries = [supabase.from("cf_sales_fact").select(sel).eq("order_ref", t)];
+      if (base !== t && base.length > 2) queries.push(supabase.from("cf_sales_fact").select(sel).like("source_txn_id", base + "%"));
+      else queries.push(supabase.from("cf_sales_fact").select(sel).eq("source_txn_id", t));
+      const res = await Promise.all(queries);
+      const seen = new Set(); const merged = [];
+      res.forEach((r) => (r.data || []).forEach((row) => { if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); } }));
+      const rows = merged.filter((r) => num(r.qty) > 0);
+      if (!rows.length) { setMsg({ t: "err", m: "No. Order tidak ditemukan di penjualan. Cek nomornya (bisa No. Order marketplace atau ID transaksi seperti MAN-…)." }); setCand([]); return; }
       const g = {};
       rows.forEach((r) => {
         const k = r.sku; if (!g[k]) g[k] = { sku: r.sku, name: nameMap[r.sku] || r.sku, sold: 0, retail: num(r.retail_price), sale: num(r.sale_at_price), location_id: r.location_id, retQty: "" };
