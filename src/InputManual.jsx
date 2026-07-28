@@ -263,15 +263,8 @@ export default function InputManual({ role }) {
         <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
           <button className={"btn btn-sm " + (txnType === "sale" ? "btn-primary" : "btn-ghost")}
             onClick={() => setTxnType("sale")}>Penjualan</button>
-          <button className={"btn btn-sm " + (txnType === "return" ? "btn-primary" : "btn-ghost")}
-            onClick={() => setTxnType("return")}>Retur</button>
           <button className={"btn btn-sm " + (txnType === "kol" ? "btn-primary" : "btn-ghost")}
             onClick={() => setTxnType("kol")}>KOL (free)</button>
-          {txnType === "return" && (
-            <span className="small" style={{ color: "var(--warn)" }}>
-              Mode retur — stok kembali masuk &amp; omzet berkurang.
-            </span>
-          )}
           {isKol && (
             <span className="small" style={{ color: "var(--accent)" }}>
               Mode KOL — barang keluar dicatat, nilai jual Rp 0 (diskon 100%).
