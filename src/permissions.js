@@ -58,7 +58,7 @@ export function hasSalesflowAccess() {
 
 export function canView(_role, page) {
   // Laporan: tampil bila role bisa lihat minimal satu modul sumbernya.
-  if (page === "laporan") {
+  if (page === "laporan" || page === "retur") {
     return ["penjualan", "kol_giveaway", "penagihan_ar", "wholesale_order"].some((r) => VIEW_SET.has(r));
   }
   const res = PAGE2RES[page];

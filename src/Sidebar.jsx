@@ -18,6 +18,7 @@ const GROUPS = [
       { k: "input", label: "Input sales", icon: "M12 5v14M5 12h14" },
       { k: "upload", label: "Upload sales", icon: "M12 16V4M7 9l5-5 5 5M5 20h14" },
       { k: "kol", label: "KOL / Giveaway", icon: "M3 8h18v4H3z M5 12v8h14v-8 M12 8v12 M8.5 8a2.5 2.5 0 110-5C11 3 12 8 12 8 M15.5 8a2.5 2.5 0 100-5C13 3 12 8 12 8" },
+      { k: "retur", label: "Retur Customer", icon: "M9 14 4 9l5-5 M20 20v-7a4 4 0 0 0-4-4H4" },
     ],
   },
   {
