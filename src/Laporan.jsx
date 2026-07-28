@@ -46,6 +46,7 @@ const ICONS = {
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8"/><path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8"/>',
   receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/>',
   truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  undo: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
 };
 function Icon({ k, color, size = 22 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: ICONS[k] || "" }} />;
@@ -56,10 +57,12 @@ const REPORTS = [
   { key: "kol",    label: "Laporan KOL / Giveaway", desc: "Produk yang keluar ke KOL/influencer (channel KOL) + nilai retail · periode", filt: "range",         res: "kol_giveaway",    color: "#7C3AED", icon: "gift" },
   { key: "ar",     label: "Daftar AR (SKU-level)",  desc: "Piutang per invoice AR + rincian tiap SKU (margin, retur) · versi lengkap",  filt: "range",         res: "penagihan_ar",    color: "#C4881A", icon: "receipt" },
   { key: "direct", label: "Direct Purchase (DO)",   desc: "Order Direct Purchase + rincian tiap SKU, fulfillment & status bayar · lengkap", filt: "range",     res: "wholesale_order", color: "#3F7D58", icon: "truck" },
+  { key: "retur",  label: "Laporan Retur",          desc: "Semua transaksi retur (nilai penjualan negatif) · bisa difilter per channel & periode",   filt: "range_channel", res: "penjualan",   color: "#A33636", icon: "undo" },
 ];
 
-const isMoneyHdr = (h) => /retail|harga|net|amount|margin|price|subtotal|terbayar|nilai|total|diskon/i.test(h);
-const isNumHdr = (h) => isMoneyHdr(h) || /qty|disc|%|fulfill/i.test(h);
+const isPctHdr = (h) => /%/.test(h);   // kolom persen (Margin %, Disc %) — angka biasa, bukan Rp
+const isMoneyHdr = (h) => !isPctHdr(h) && /retail|harga|net|amount|margin|price|subtotal|terbayar|nilai|total|diskon/i.test(h);
+const isNumHdr = (h) => isMoneyHdr(h) || isPctHdr(h) || /qty|disc|fulfill/i.test(h);
 
 export default function Laporan() {
   const [ready, setReady] = useState(false);
@@ -201,6 +204,25 @@ export default function Laporan() {
       });
       const totals = alignTotals(headers.length, [[0, "TOTAL"], [8, tQo], [9, tQf], [12, rp(tSub)]]);
       return pack(`Laporan Direct Purchase (DO) — ${dShort(from)} s/d ${dShort(to)}`, headers, body, totals, `Direct_Purchase_${from}_${to}.xlsx`);
+    }
+
+    if (key === "retur") {
+      const rows = await fetchAll(() => {
+        let q = supabase.from("cf_sales_fact").select("txn_date,channel_id,location_id,sku,qty,retail_price,sale_at_price,net_amount,order_ref");
+        if (channel) q = q.eq("channel_id", channel);
+        return q.gte("txn_date", from).lte("txn_date", to).lt("net_amount", 0);
+      });
+      rows.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
+      const headers = ["Tgl", "Channel", "Lokasi", "SKU", "Kode Produk", "Produk", "Size", "Warna", "Qty Retur", "Retail", "Harga Jual", "Nilai Retur", "Ref Order"];
+      let tQ = 0, tN = 0;
+      const body = rows.map((r) => {
+        const s = skuInfo(ref, r.sku); const qty = Math.abs(num(r.qty)); const val = Math.abs(num(r.net_amount));
+        tQ += qty; tN += val;
+        return [dShort(r.txn_date), ch(r.channel_id), loc(r.location_id), r.sku, s.code, s.name, s.size, s.colour, qty, rp(r.retail_price), rp(r.sale_at_price), rp(val), r.order_ref || ""];
+      });
+      const totals = alignTotals(headers.length, [[0, "TOTAL"], [8, tQ], [11, rp(tN)]]);
+      const chLabel = channel ? "_" + (ch(channel) || channel).replace(/\s+/g, "") : "";
+      return pack(`Laporan Retur — ${dShort(from)} s/d ${dShort(to)}${channel ? " · " + ch(channel) : ""}`, headers, body, totals, `Retur${chLabel}_${from}_${to}.xlsx`);
     }
 
     throw new Error("Laporan tidak dikenal");
