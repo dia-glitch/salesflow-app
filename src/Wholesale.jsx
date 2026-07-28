@@ -89,6 +89,7 @@ export default function Wholesale({ role }) {
   useEffect(() => { load(); }, []);
 
   const custName = useMemo(() => { const m = {}; customers.forEach((c) => (m[c.id] = c.name)); return m; }, [customers]);
+  const custById = useMemo(() => { const m = {}; customers.forEach((c) => (m[c.id] = c)); return m; }, [customers]);
 
   function derive(o) {
     const invs = invsByOrder[o.id] || [];
@@ -229,7 +230,7 @@ export default function Wholesale({ role }) {
 
       {modal?.kind === "view" && <OrderView order={modal.order} custName={custName[modal.order.customer_id] || "—"} onClose={() => setModal(null)} />}
       {modal?.kind === "invoice" && <InvoiceModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
-      {modal?.kind === "fulfill" && <FulfillModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} stockWh={stockWh} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
+      {modal?.kind === "fulfill" && <FulfillModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} customer={custById[modal.order.customer_id] || null} stockWh={stockWh} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
     </div>
   );
 }
@@ -432,6 +433,7 @@ function openPrint(title, bodyHtml) {
     .doc-h .co{font-size:18px;font-weight:800;letter-spacing:.5px}.doc-h .co small{display:block;font-weight:500;color:#555;font-size:11px;letter-spacing:0}
     .doc-t{font-size:18px;font-weight:800;letter-spacing:1px;text-align:right}.doc-meta{text-align:right;font-size:11.5px;color:#333;margin-top:4px;line-height:1.5}
     .meta-row{display:flex;gap:48px;margin:2px 0 14px}.meta-row b{display:block;color:#666;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+    .ship-to{margin:2px 0 16px}.ship-to b{display:block;color:#666;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}.ship-to .nm{font-size:15px;font-weight:800}.ship-to .addr{font-size:12px;color:#333;margin-top:2px;max-width:72%;line-height:1.45;white-space:pre-line}
     table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left;font-size:12px}
     th{background:#f2f2f0;text-transform:uppercase;font-size:10px;letter-spacing:.4px}td.n,th.n{text-align:right}
     tfoot td{font-weight:700;background:#fafafa}
@@ -440,7 +442,7 @@ function openPrint(title, bodyHtml) {
   </style></head><body>${bodyHtml}<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`);
   w.document.close();
 }
-function docHTML(kind, ord, lines, custName) {
+function docHTML(kind, ord, lines, cust) {
   const isSJ = kind === "sj";
   const dateStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
   const qtyOf = (l) => isSJ ? (Number(l.qty_packed) || 0) : (Number(l.qty_order) - Number(l.qty_fulfilled));
@@ -452,7 +454,7 @@ function docHTML(kind, ord, lines, custName) {
   return `
     <div class="doc-h"><div class="co">ALEZA<small>PT Asa Modakreasi Indonesia</small></div>
       <div><div class="doc-t">${isSJ ? "SURAT JALAN" : "PICKING LIST"}</div><div class="doc-meta">${meta}</div></div></div>
-    <div class="meta-row"><div><b>Customer</b>${esc(custName)}</div><div><b>Gudang Asal</b>${esc(ord.fulfill_location_id || "WH-MAIN")}</div></div>
+    <div class="ship-to"><b>Kepada</b><div class="nm">${esc((cust && cust.name) || "-")}</div>${cust && cust.address ? `<div class="addr">${esc(cust.address)}</div>` : '<div class="addr" style="color:#b00">— alamat customer belum diisi —</div>'}${cust && cust.contact ? `<div class="addr">Kontak: ${esc(cust.contact)}</div>` : ""}</div>
     <table><thead><tr><th class="n">#</th><th>SKU</th><th>Produk</th><th class="n">${isSJ ? "Qty Kirim" : "Qty Diminta"}</th>${isSJ ? "" : '<th class="n">Qty Diambil</th>'}</tr></thead>
       <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#999">Tidak ada baris</td></tr>'}</tbody>
       <tfoot><tr><td colspan="3" style="text-align:right">TOTAL</td><td class="n">${totQty}</td>${isSJ ? "" : "<td></td>"}</tr></tfoot></table>
@@ -461,7 +463,7 @@ function docHTML(kind, ord, lines, custName) {
 }
 
 /* ---------------- Modal: Fulfillment (tab Warehouse) ---------------- */
-function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
+function FulfillModal({ order, custName, customer, stockWh, canDo, onClose, onChange }) {
   const [ord, setOrd] = useState(order);
   const [lines, setLines] = useState(null);
   const [pack, setPack] = useState({});     // line_id -> qty tersedia (packing)
@@ -632,7 +634,7 @@ function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
 
         {stage === "packing" && canDo && (
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-ghost" onClick={() => openPrint("Picking List", docHTML("pick", ord, lines, custName))}>🖨 Cetak Picking List</button>
+            <button className="btn btn-ghost" onClick={() => openPrint("Picking List", docHTML("pick", ord, lines, customer || { name: custName }))}>🖨 Cetak Picking List</button>
             <button className="btn btn-primary" onClick={confirmPacking} disabled={busy}>{busy ? "Menyimpan…" : "Konfirmasi Packing →"}</button>
           </div>
         )}
@@ -641,7 +643,7 @@ function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
         {stage === "ship" && (
           <>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <button className="btn btn-ghost" onClick={() => openPrint("Surat Jalan", docHTML("sj", ord, lines, custName))}>🖨 Cetak Surat Jalan</button>
+              <button className="btn btn-ghost" onClick={() => openPrint("Surat Jalan", docHTML("sj", ord, lines, customer || { name: custName }))}>🖨 Cetak Surat Jalan</button>
               {canDo && <button className="btn btn-ghost" onClick={reopenPacking} disabled={busy}>← Ubah Packing</button>}
             </div>
             <div className="card">
