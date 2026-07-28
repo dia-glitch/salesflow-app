@@ -128,6 +128,9 @@ function BuatRetur({ channels, nameMap, onDone }) {
   const [soRef, setSoRef] = useState("");
   const [custName, setCustName] = useState("");
   const [reason, setReason] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accNo, setAccNo] = useState("");
+  const [accName, setAccName] = useState("");
   const [cand, setCand] = useState(null);   // hasil cari SO: [{sku,name,sold,retail,sale,location_id,retQty}]
   const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -209,6 +212,9 @@ function BuatRetur({ channels, nameMap, onDone }) {
         return_no, channel_id: channel, refund_route: route, sales_order_ref: soRef.trim(),
         customer_name: custName.trim() || null, reason: reason.trim() || null, status: "qc",
         photo_urls: photoUrls.length ? photoUrls : null, received_at: nowISO(), sales_reduced: true,
+        refund_bank_name: route === "finflow_refund" ? (bankName.trim() || null) : null,
+        refund_account_no: route === "finflow_refund" ? (accNo.trim() || null) : null,
+        refund_account_name: route === "finflow_refund" ? (accName.trim() || null) : null,
       }).select().single();
       if (error) throw error;
       await supabase.from("sf_customer_return_lines").insert(picked.map((l) => ({
@@ -253,6 +259,17 @@ function BuatRetur({ channels, nameMap, onDone }) {
         <div><button className="btn btn-ghost" onClick={searchSO} disabled={searching}>{searching ? "Mencari…" : "🔍 Cari SO"}</button></div>
         <div><label>Alasan retur</label><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="mis. rusak, salah size" /></div>
       </div>
+
+      {route === "finflow_refund" && (
+        <>
+          <div className="section-label" style={{ marginTop: 14 }}>Rekening tujuan refund (untuk FinFlow)</div>
+          <div className="grid3" style={{ marginTop: 8 }}>
+            <div><label>Bank</label><input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="mis. BCA / Mandiri" /></div>
+            <div><label>No. Rekening</label><input value={accNo} onChange={(e) => setAccNo(e.target.value)} placeholder="contoh: 1234567890" /></div>
+            <div><label>Atas Nama</label><input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder="nama pemilik rekening" /></div>
+          </div>
+        </>
+      )}
 
       {cand && cand.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 14 }}>
@@ -351,6 +368,7 @@ function ProsesModal({ ret, chName, locName, onClose, onChange }) {
         refund_no, return_id: ret.id, source_app: "salesflow", channel_id: r.channel_id,
         sales_order_ref: r.sales_order_ref, customer_name: r.customer_name, amount: refundAmount,
         status: "requested", note: `Retur ${r.return_no}`,
+        bank_name: r.refund_bank_name || null, account_no: r.refund_account_no || null, account_name: r.refund_account_name || null,
       });
       if (error) throw error;
       await supabase.from("sf_customer_returns").update({ status: "done", refund_at: nowISO() }).eq("id", ret.id);
