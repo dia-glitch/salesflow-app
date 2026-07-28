@@ -153,11 +153,12 @@ export default function Wholesale({ role }) {
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             {orders.length === 0 ? <div className="center-msg">Belum ada pesanan.</div> : (
               <table>
-                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Total</th><th>Progres pipeline</th><th></th></tr></thead>
+                <thead><tr><th>No Order</th><th>Tgl Order</th><th>Customer</th><th className="num">Total</th><th>Progres pipeline</th><th></th></tr></thead>
                 <tbody>
                   {orders.map((o) => (
                     <tr key={o.id}>
                       <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
+                      <td style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>{o.order_date || (o.created_at ? String(o.created_at).slice(0, 10) : "—")}</td>
                       <td className="strong">{custName[o.customer_id] || "—"}</td>
                       <td className="num" style={{ fontWeight: 700 }}>{fmtIDR(o.total)}</td>
                       <td><PipelineChips o={o} d={derive(o)} /></td>
