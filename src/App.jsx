@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar.jsx";
+import Laporan from "./Laporan.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Sales from "./Sales.jsx";
 import SkuMaster from "./SkuMaster.jsx";
@@ -114,6 +115,7 @@ export default function App() {
           if (view === "collection") return <CollectionPerf />;
           if (view === "restock") return <RestockNotif />;
           if (view === "kol") return <KolReport />;
+          if (view === "laporan") return <Laporan role={role} />;
           if (view === "ar") return <Penagihan role={role} />;
           if (view === "wholesale") return <Wholesale role={role} />;
           if (view === "ai") return <AnalisaAI />;

@@ -57,9 +57,16 @@ export function hasSalesflowAccess() {
 }
 
 export function canView(_role, page) {
+  // Laporan: tampil bila role bisa lihat minimal satu modul sumbernya.
+  if (page === "laporan") {
+    return ["penjualan", "kol_giveaway", "penagihan_ar", "wholesale_order"].some((r) => VIEW_SET.has(r));
+  }
   const res = PAGE2RES[page];
   return res ? VIEW_SET.has(res) : false;
 }
+
+// Cek satu resource langsung (dipakai halaman Laporan untuk gating tiap kartu).
+export function canViewRes(res) { return VIEW_SET.has(res); }
 
 export function canAct(_role, area) {
   const list = AREA2RES[area];
