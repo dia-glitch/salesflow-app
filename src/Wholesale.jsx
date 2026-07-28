@@ -106,13 +106,16 @@ export default function Wholesale({ role }) {
       invs.length === 0 || balanceTotal > 0 || (closedOrDone && hasDp && !hasFull && !hasSettle && settleAmount > 0)
     );
     const fulfillReady = o.status !== "cancelled" && !closedOrDone && anyRemaining && paidTotal > 0;
-    return { invs, agg, paidTotal, balanceTotal, financeAction, fulfillReady };
+    // Antrian Warehouse: seluruh siklus pasca-bayar sampai order ditutup
+    // (packing → kirim → penerimaan). Sudah diterima tapi belum closed tetap tampil agar bisa ditutup.
+    const inFulfill = o.status !== "cancelled" && o.status !== "closed" && paidTotal > 0;
+    return { invs, agg, paidTotal, balanceTotal, financeAction, fulfillReady, inFulfill };
   }
 
   if (loading) return <div className="center-msg">Memuat…</div>;
 
   const invoiceQueue = orders.filter((o) => derive(o).financeAction);
-  const fulfillQueue = orders.filter((o) => derive(o).fulfillReady);
+  const fulfillQueue = orders.filter((o) => derive(o).inFulfill);
   const TABS = [["order", "Order", "Sales"], ["invoice", "Invoice", "Finance"], ["fulfillment", "Fulfillment", "Warehouse"], ["customers", "Customer", ""]];
 
   return (
@@ -198,18 +201,25 @@ export default function Wholesale({ role }) {
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             {fulfillQueue.length === 0 ? <div className="center-msg">Belum ada order siap kirim (menunggu pembayaran DP/invoice dari Finance).</div> : (
               <table>
-                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Qty order</th><th className="num">Terkirim</th><th className="num">Sisa</th><th></th></tr></thead>
+                <thead><tr><th>No Order</th><th>Customer</th><th className="num">Qty order</th><th className="num">Terkirim</th><th>Tahap</th><th></th></tr></thead>
                 <tbody>
-                  {fulfillQueue.map((o) => { const d = derive(o); return (
-                    <tr key={o.id}>
-                      <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
-                      <td className="strong">{custName[o.customer_id] || "—"}</td>
-                      <td className="num">{fmtNum(d.agg.qtyOrder)}</td>
-                      <td className="num">{fmtNum(d.agg.qtyFulfilled)}</td>
-                      <td className="num" style={{ fontWeight: 700 }}>{fmtNum(d.agg.qtyOrder - d.agg.qtyFulfilled)}</td>
-                      <td className="num"><button className="btn btn-primary btn-sm" onClick={() => setModal({ kind: "fulfill", order: o })}>Kirim</button></td>
-                    </tr>
-                  ); })}
+                  {fulfillQueue.map((o) => {
+                    const d = derive(o);
+                    const st = o.status === "closed" ? "done" : o.received_at ? "done" : o.shipped_at ? "receiving" : o.packed_at ? "ship" : "packing";
+                    const stLabel = { packing: "Picking & Packing", ship: "Surat Jalan & Kirim", receiving: "Menunggu Terima", done: "Selesai" }[st];
+                    const btnLabel = { packing: "Proses", ship: "Kirim", receiving: "Konfirmasi Terima", done: "Lihat" }[st];
+                    const stColor = { packing: ["var(--surface2)", "var(--sub)"], ship: ["var(--accent-soft)", "var(--accent-ink)"], receiving: ["var(--warn-soft)", "var(--warn)"], done: ["var(--good-soft)", "var(--good)"] }[st];
+                    return (
+                      <tr key={o.id}>
+                        <td className="strong" style={{ fontSize: 12.5 }}>{o.order_no}</td>
+                        <td className="strong">{custName[o.customer_id] || "—"}</td>
+                        <td className="num">{fmtNum(d.agg.qtyOrder)}</td>
+                        <td className="num">{fmtNum(d.agg.qtyFulfilled)}</td>
+                        <td><span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: stColor[0], color: stColor[1] }}>{stLabel}</span></td>
+                        <td className="num"><button className="btn btn-primary btn-sm" onClick={() => setModal({ kind: "fulfill", order: o })}>{btnLabel}</button></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -411,51 +421,149 @@ function OrderView({ order, custName, onClose }) {
   );
 }
 
+/* ---------------- Dokumen cetak (Picking List / Surat Jalan) ---------------- */
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function openPrint(title, bodyHtml) {
+  const w = window.open("", "_blank", "width=840,height=940");
+  if (!w) { alert("Popup diblokir browser. Izinkan popup untuk mencetak dokumen."); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+    *{box-sizing:border-box}body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:0;padding:30px 34px;font-size:13px}
+    .doc-h{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:16px}
+    .doc-h .co{font-size:18px;font-weight:800;letter-spacing:.5px}.doc-h .co small{display:block;font-weight:500;color:#555;font-size:11px;letter-spacing:0}
+    .doc-t{font-size:18px;font-weight:800;letter-spacing:1px;text-align:right}.doc-meta{text-align:right;font-size:11.5px;color:#333;margin-top:4px;line-height:1.5}
+    .meta-row{display:flex;gap:48px;margin:2px 0 14px}.meta-row b{display:block;color:#666;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+    table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left;font-size:12px}
+    th{background:#f2f2f0;text-transform:uppercase;font-size:10px;letter-spacing:.4px}td.n,th.n{text-align:right}
+    tfoot td{font-weight:700;background:#fafafa}
+    .sign{display:flex;justify-content:space-between;margin-top:52px}.sign div{width:42%;text-align:center;font-size:12px;color:#333}.sign .ln{margin-top:54px;border-top:1px solid #111;padding-top:5px}
+    @media print{body{padding:6px}}
+  </style></head><body>${bodyHtml}<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`);
+  w.document.close();
+}
+function docHTML(kind, ord, lines, custName) {
+  const isSJ = kind === "sj";
+  const dateStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  const qtyOf = (l) => isSJ ? (Number(l.qty_packed) || 0) : (Number(l.qty_order) - Number(l.qty_fulfilled));
+  const rows = (lines || []).filter((l) => qtyOf(l) > 0).map((l, i) =>
+    `<tr><td class="n">${i + 1}</td><td>${esc(l.sku)}</td><td>${esc(l.product_name || "")}</td><td class="n">${qtyOf(l)}</td>${isSJ ? "" : '<td class="n" style="width:90px"></td>'}</tr>`
+  ).join("");
+  const totQty = (lines || []).reduce((s, l) => s + Math.max(0, qtyOf(l)), 0);
+  const meta = (isSJ ? `No. Surat Jalan: <b>${esc(ord.sj_no || "-")}</b><br>` : "") + `No. DO: ${esc(ord.order_no)}<br>${dateStr}`;
+  return `
+    <div class="doc-h"><div class="co">ALEZA<small>PT Asa Modakreasi Indonesia</small></div>
+      <div><div class="doc-t">${isSJ ? "SURAT JALAN" : "PICKING LIST"}</div><div class="doc-meta">${meta}</div></div></div>
+    <div class="meta-row"><div><b>Customer</b>${esc(custName)}</div><div><b>Gudang Asal</b>${esc(ord.fulfill_location_id || "WH-MAIN")}</div></div>
+    <table><thead><tr><th class="n">#</th><th>SKU</th><th>Produk</th><th class="n">${isSJ ? "Qty Kirim" : "Qty Diminta"}</th>${isSJ ? "" : '<th class="n">Qty Diambil</th>'}</tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#999">Tidak ada baris</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="3" style="text-align:right">TOTAL</td><td class="n">${totQty}</td>${isSJ ? "" : "<td></td>"}</tr></tfoot></table>
+    ${ord.note ? `<p style="margin-top:12px;font-size:12px"><b>Catatan:</b> ${esc(ord.note)}</p>` : ""}
+    <div class="sign"><div>Pengirim / Gudang<div class="ln">(&nbsp;____________________&nbsp;)</div></div><div>${isSJ ? "Penerima / Customer" : "Diperiksa"}<div class="ln">(&nbsp;____________________&nbsp;)</div></div></div>`;
+}
+
 /* ---------------- Modal: Fulfillment (tab Warehouse) ---------------- */
 function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
   const [ord, setOrd] = useState(order);
   const [lines, setLines] = useState(null);
-  const [ship, setShip] = useState({});
+  const [pack, setPack] = useState({});     // line_id -> qty tersedia (packing)
+  const [recv, setRecv] = useState({});     // line_id -> qty diterima customer
+  const [photos, setPhotos] = useState([]); // File[] belum diupload
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
   async function reload() {
-    const [ordRes, lnRes] = await Promise.all([
+    const [o, l] = await Promise.all([
       supabase.from("sf_do_orders").select("*").eq("id", order.id).single(),
       supabase.from("sf_do_order_lines").select("*").eq("order_id", order.id).order("sku"),
     ]);
-    if (ordRes.data) setOrd(ordRes.data);
-    setLines(lnRes.data || []);
+    if (o.data) setOrd(o.data);
+    setLines(l.data || []);
   }
   useEffect(() => { reload(); }, [order.id]);
-  const anyRemaining = (lines || []).some((l) => Number(l.qty_order) - Number(l.qty_fulfilled) > 0);
-  const active = ord.status !== "cancelled" && ord.status !== "fulfilled" && ord.status !== "closed";
 
-  async function doFulfill() {
+  const packed = !!ord.packed_at, shipped = !!ord.shipped_at, received = !!ord.received_at;
+  const closed = ord.status === "cancelled" || ord.status === "closed";
+  const stage = closed ? "closed" : received ? "done" : shipped ? "receiving" : packed ? "ship" : "packing";
+  const rem = (l) => Number(l.qty_order) - Number(l.qty_fulfilled);
+
+  async function confirmPacking() {
     if (busy) return;
-    const payload = Object.entries(ship).map(([line_id, qty]) => ({ line_id, qty: Number(qty) || 0 })).filter((x) => x.qty > 0);
-    if (payload.length === 0) { setMsg({ t: "err", m: "Isi qty kirim minimal satu baris." }); return; }
+    const rows = (lines || []).map((l) => {
+      const maxv = Math.max(0, Math.min(rem(l), stockWh[l.sku] ?? 0));
+      const raw = pack[l.id] != null && pack[l.id] !== "" ? Number(pack[l.id]) : maxv;
+      return { id: l.id, qty: Math.max(0, Math.min(raw || 0, maxv)) };
+    });
+    if (!rows.some((r) => r.qty > 0)) { setMsg({ t: "err", m: "Isi qty tersedia minimal satu baris." }); return; }
     setBusy(true); setMsg(null);
     try {
+      for (const r of rows) await supabase.from("sf_do_order_lines").update({ qty_packed: r.qty }).eq("id", r.id);
+      const sjNo = ord.sj_no || ("SJ" + String(order.order_no || "").replace(/^DO/i, ""));
+      await supabase.from("sf_do_orders").update({ packed_at: new Date().toISOString(), sj_no: sjNo, status: ord.status === "draft" ? "confirmed" : ord.status }).eq("id", order.id);
+      setMsg({ t: "ok", m: "Packing dikonfirmasi. Cetak Surat Jalan & upload foto, lalu Kirim." });
+      await reload(); onChange();
+    } catch (e) { setMsg({ t: "err", m: "Gagal simpan packing: " + (e.message || "") }); } finally { setBusy(false); }
+  }
+  async function reopenPacking() {
+    if (busy) return; setBusy(true); setMsg(null);
+    try { await supabase.from("sf_do_orders").update({ packed_at: null }).eq("id", order.id); await reload(); onChange(); }
+    finally { setBusy(false); }
+  }
+
+  async function uploadPhotos() {
+    const urls = Array.isArray(ord.ship_photo_urls) ? [...ord.ship_photo_urls] : [];
+    for (let i = 0; i < photos.length; i++) {
+      const f = photos[i];
+      const safe = String(f.name || "foto").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${order.id}/${Date.now()}_${i}_${safe}`;
+      const { error } = await supabase.storage.from("do-shipment-photos").upload(path, f, { cacheControl: "3600", upsert: false });
+      if (error) throw error;
+      const { data } = supabase.storage.from("do-shipment-photos").getPublicUrl(path);
+      urls.push(data.publicUrl);
+    }
+    return urls;
+  }
+
+  async function shipNow() {
+    if (busy) return;
+    const payload = (lines || []).map((l) => ({ line_id: l.id, qty: Number(l.qty_packed) || 0 })).filter((x) => x.qty > 0);
+    if (!payload.length) { setMsg({ t: "err", m: "Qty packing kosong — ulangi packing." }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      let photoUrls = ord.ship_photo_urls || [];
+      if (photos.length) photoUrls = await uploadPhotos();
       const { error } = await supabase.rpc("sf_do_fulfill", { p_order_id: order.id, p_lines: payload });
       if (error) throw error;
-      setShip({}); setMsg({ t: "ok", m: "Barang dikirim & stok dipotong." });
+      await supabase.from("sf_do_orders").update({ shipped_at: new Date().toISOString(), ship_photo_urls: photoUrls }).eq("id", order.id);
+      setPhotos([]); setMsg({ t: "ok", m: "Barang dikirim & stok dipotong. Menunggu konfirmasi penerimaan customer." });
       await reload(); onChange();
-    } catch (e) { setMsg({ t: "err", m: "Gagal kirim: " + (e.message || "cek stok/izin") }); } finally { setBusy(false); }
+    } catch (e) { setMsg({ t: "err", m: "Gagal kirim: " + (e.message || "cek stok/izin/bucket foto") }); } finally { setBusy(false); }
   }
-  async function closeOrder() {
-    if (busy) return;
-    setBusy(true); setMsg(null);
+
+  async function confirmReceiving() {
+    if (busy) return; setBusy(true); setMsg(null);
     try {
-      await supabase.from("sf_do_orders").update({ status: "closed" }).eq("id", order.id);
-      setMsg({ t: "ok", m: "Order ditutup — sisa yang belum terkirim dibatalkan (stok tidak berubah)." });
+      for (const l of lines) {
+        const shp = Number(l.qty_fulfilled) || 0;
+        const raw = recv[l.id] != null && recv[l.id] !== "" ? Number(recv[l.id]) : shp;
+        await supabase.from("sf_do_order_lines").update({ qty_received: Math.max(0, Math.min(raw || 0, shp)) }).eq("id", l.id);
+      }
+      await supabase.from("sf_do_orders").update({ received_at: new Date().toISOString() }).eq("id", order.id);
+      setMsg({ t: "ok", m: "Penerimaan dikonfirmasi. Tagihan final mengikuti qty diterima." });
       await reload(); onChange();
-    } catch (e) { setMsg({ t: "err", m: "Gagal tutup order: " + (e.message || "") }); } finally { setBusy(false); }
+    } catch (e) { setMsg({ t: "err", m: "Gagal simpan penerimaan: " + (e.message || "") }); } finally { setBusy(false); }
+  }
+
+  async function closeOrder() {
+    if (busy) return; setBusy(true);
+    try { await supabase.from("sf_do_orders").update({ status: "closed" }).eq("id", order.id); await reload(); onChange(); }
+    finally { setBusy(false); }
   }
 
   if (lines === null) return (
     <div className="ar-overlay" onClick={onClose}><div className="ar-modal" onClick={(e) => e.stopPropagation()}><div className="center-msg">Memuat…</div></div></div>
   );
+
+  const STEPS = [["packing", "Picking & Packing"], ["ship", "Surat Jalan & Kirim"], ["receiving", "Penerimaan"], ["done", "Selesai"]];
+  const stepIdx = { packing: 0, ship: 1, receiving: 2, done: 3, closed: 3 }[stage];
 
   return (
     <div className="ar-overlay" onClick={onClose}>
@@ -463,50 +571,120 @@ function FulfillModal({ order, custName, stockWh, canDo, onClose, onChange }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div>
             <div style={{ fontWeight: 800, fontSize: 17 }}>{order.order_no}</div>
-            <div className="small muted">Fulfillment · {custName} · <OStatus s={ord.status} /></div>
+            <div className="small muted">Fulfillment · {custName} · <OStatus s={ord.status} />{ord.sj_no ? " · SJ " + ord.sj_no : ""}</div>
           </div>
           <button className="btn btn-ghost" onClick={onClose}>Tutup</button>
         </div>
+
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+          {STEPS.map(([k, label], i) => (
+            <div key={k} style={{ flex: 1, minWidth: 118, padding: "7px 10px", borderRadius: 9, fontSize: 11.5, fontWeight: 700, textAlign: "center",
+              background: i < stepIdx ? "var(--good-soft)" : i === stepIdx ? "var(--accent-soft)" : "var(--surface2)",
+              color: i < stepIdx ? "var(--good)" : i === stepIdx ? "var(--accent-ink)" : "var(--faint)" }}>
+              {i < stepIdx ? "✓ " : ""}{label}
+            </div>
+          ))}
+        </div>
+
         {msg && <div className="card" style={{ background: msg.t === "ok" ? "var(--good-soft)" : "var(--bad-soft)", borderColor: "transparent", color: msg.t === "ok" ? "var(--good)" : "var(--bad)" }}>{msg.m}</div>}
+
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <table>
             <thead><tr>
-              <th>SKU</th><th>Produk</th><th className="num">Order</th><th className="num">Terkirim</th>
-              <th className="num">Sisa</th><th className="num">Stok WH</th>{canDo && active && <th className="num">Kirim</th>}
+              <th>SKU</th><th>Produk</th><th className="num">Order</th>
+              <th className="num">{stage === "receiving" || stage === "done" ? "Dikirim" : "Terkirim"}</th>
+              {stage === "packing" && <><th className="num">Stok WH</th><th className="num">Qty Tersedia</th></>}
+              {stage === "ship" && <th className="num">Qty Packing</th>}
+              {stage === "receiving" && <th className="num">Qty Diterima</th>}
+              {stage === "done" && <><th className="num">Diterima</th><th className="num">Selisih</th></>}
             </tr></thead>
             <tbody>
               {lines.map((l) => {
-                const sisa = Number(l.qty_order) - Number(l.qty_fulfilled);
                 const stok = stockWh[l.sku] ?? 0;
+                const shp = Number(l.qty_fulfilled) || 0;
+                const selisih = shp - (Number(l.qty_received) || 0);
                 return (
                   <tr key={l.id}>
                     <td style={{ fontSize: 12 }}>{l.sku}</td>
                     <td className="strong">{l.product_name || "—"}</td>
                     <td className="num">{fmtNum(l.qty_order)}</td>
-                    <td className="num">{fmtNum(l.qty_fulfilled)}</td>
-                    <td className="num" style={{ fontWeight: 700 }}>{fmtNum(sisa)}</td>
-                    <td className="num" style={{ color: stok < sisa ? "var(--bad)" : undefined }}>{fmtNum(stok)}</td>
-                    {canDo && active && (
-                      <td className="num">
-                        {sisa > 0 ? (
-                          <input className="num" type="number" min="0" max={Math.min(sisa, stok)} value={ship[l.id] ?? ""}
-                            onChange={(e) => setShip((s) => ({ ...s, [l.id]: e.target.value }))} style={{ width: 70 }} placeholder="0" />
-                        ) : <span className="muted">—</span>}
-                      </td>
-                    )}
+                    <td className="num">{fmtNum(shp)}</td>
+                    {stage === "packing" && <>
+                      <td className="num" style={{ color: stok < rem(l) ? "var(--bad)" : undefined }}>{fmtNum(stok)}</td>
+                      <td className="num">{rem(l) > 0 && canDo
+                        ? <input className="num" type="number" min="0" max={Math.min(rem(l), stok)} value={pack[l.id] ?? ""} placeholder={String(Math.max(0, Math.min(rem(l), stok)))} onChange={(e) => setPack((s) => ({ ...s, [l.id]: e.target.value }))} style={{ width: 72 }} />
+                        : <span className="muted">{rem(l) <= 0 ? "—" : fmtNum(Math.min(rem(l), stok))}</span>}</td>
+                    </>}
+                    {stage === "ship" && <td className="num" style={{ fontWeight: 700 }}>{fmtNum(l.qty_packed)}</td>}
+                    {stage === "receiving" && <td className="num">{canDo
+                      ? <input className="num" type="number" min="0" max={shp} value={recv[l.id] ?? ""} placeholder={String(shp)} onChange={(e) => setRecv((s) => ({ ...s, [l.id]: e.target.value }))} style={{ width: 72 }} />
+                      : fmtNum(shp)}</td>}
+                    {stage === "done" && <>
+                      <td className="num">{fmtNum(l.qty_received)}</td>
+                      <td className="num" style={{ color: selisih > 0 ? "var(--bad)" : "var(--good)" }}>{selisih > 0 ? "-" + fmtNum(selisih) : "0"}</td>
+                    </>}
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        {canDo && active && (
-          <div style={{ display: "flex", justifyContent: anyRemaining ? "space-between" : "flex-end", gap: 8, flexWrap: "wrap" }}>
-            {anyRemaining && <button className="btn btn-ghost" onClick={closeOrder} disabled={busy}>Tutup order (batalkan sisa)</button>}
-            <button className="btn btn-primary" onClick={doFulfill} disabled={busy}>{busy ? "Memproses…" : "Kirim dari WH-Main"}</button>
+
+        {stage === "packing" && canDo && (
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-ghost" onClick={() => openPrint("Picking List", docHTML("pick", ord, lines, custName))}>🖨 Cetak Picking List</button>
+            <button className="btn btn-primary" onClick={confirmPacking} disabled={busy}>{busy ? "Menyimpan…" : "Konfirmasi Packing →"}</button>
           </div>
         )}
-        {!active && <p className="small muted">Order sudah {ord.status === "fulfilled" ? "terkirim penuh" : ord.status}. Tidak ada aksi kirim.</p>}
+        {stage === "packing" && !canDo && <p className="small muted">Role kamu tidak punya akses aksi fulfillment.</p>}
+
+        {stage === "ship" && (
+          <>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <button className="btn btn-ghost" onClick={() => openPrint("Surat Jalan", docHTML("sj", ord, lines, custName))}>🖨 Cetak Surat Jalan</button>
+              {canDo && <button className="btn btn-ghost" onClick={reopenPacking} disabled={busy}>← Ubah Packing</button>}
+            </div>
+            <div className="card">
+              <div className="section-label">Foto dokumentasi pengiriman</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                {(Array.isArray(ord.ship_photo_urls) ? ord.ship_photo_urls : []).map((u, i) => (
+                  <a key={"u" + i} href={u} target="_blank" rel="noopener"><img src={u} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} /></a>
+                ))}
+                {photos.map((f, i) => (<img key={"f" + i} src={URL.createObjectURL(f)} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px dashed var(--accent)" }} />))}
+                {canDo && <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }}>+ Tambah foto
+                  <input type="file" accept="image/*" multiple capture="environment" style={{ display: "none" }} onChange={(e) => setPhotos((p) => [...p, ...Array.from(e.target.files || [])])} /></label>}
+                {photos.length > 0 && <span className="small muted">{photos.length} foto baru diupload saat Kirim</span>}
+              </div>
+            </div>
+            {canDo && <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+              <button className="btn btn-primary" onClick={shipNow} disabled={busy}>{busy ? "Mengirim…" : "Kirim barang (potong stok)"}</button>
+            </div>}
+          </>
+        )}
+
+        {stage === "receiving" && (
+          <>
+            {Array.isArray(ord.ship_photo_urls) && ord.ship_photo_urls.length > 0 && (
+              <div className="card"><div className="section-label">Foto pengiriman ({ord.ship_photo_urls.length})</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {ord.ship_photo_urls.map((u, i) => (<a key={i} href={u} target="_blank" rel="noopener"><img src={u} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }} /></a>))}
+                </div></div>
+            )}
+            {canDo && <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn btn-primary" onClick={confirmReceiving} disabled={busy}>{busy ? "Menyimpan…" : "Konfirmasi Penerimaan Customer"}</button>
+            </div>}
+            <p className="small muted" style={{ marginTop: 6 }}>Isi qty yang benar-benar diterima customer. Selisih (kirim − terima) otomatis mengurangi nilai tagihan.</p>
+          </>
+        )}
+
+        {stage === "done" && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="small muted">Diterima customer {ord.received_at ? new Date(ord.received_at).toLocaleDateString("id-ID") : "—"} · tagihan final mengikuti qty diterima.</div>
+            {ord.status !== "closed" && canDo && <button className="btn btn-ghost" onClick={closeOrder} disabled={busy}>Tutup order</button>}
+          </div>
+        )}
+
+        {stage === "closed" && <p className="small muted">Order sudah {ord.status}. Tidak ada aksi lagi.</p>}
       </div>
     </div>
   );
@@ -522,7 +700,7 @@ function InvoiceModal({ order, custName, canDo, onClose, onChange }) {
   async function reload() {
     const [ordRes, lnRes, ivRes] = await Promise.all([
       supabase.from("sf_do_orders").select("*").eq("id", order.id).single(),
-      supabase.from("sf_do_order_lines").select("unit_price,qty_fulfilled").eq("order_id", order.id),
+      supabase.from("sf_do_order_lines").select("unit_price,qty_fulfilled,qty_received").eq("order_id", order.id),
       supabase.from("sf_do_invoices").select("*").eq("order_id", order.id).order("created_at"),
     ]);
     if (ordRes.data) setOrd(ordRes.data);
@@ -536,7 +714,9 @@ function InvoiceModal({ order, custName, canDo, onClose, onChange }) {
     } else setPaysByInv({});
   }
   useEffect(() => { reload(); }, [order.id]);
-  const deliveredValue = (lines || []).reduce((s, l) => s + Number(l.unit_price || 0) * Number(l.qty_fulfilled || 0), 0);
+  // Nilai tagihan: setelah customer konfirmasi terima -> pakai qty diterima
+  // (selisih kirim-terima mengurangi tagihan). Sebelum itu -> qty dikirim.
+  const deliveredValue = (lines || []).reduce((s, l) => s + Number(l.unit_price || 0) * Number((ord.received_at ? l.qty_received : l.qty_fulfilled) || 0), 0);
 
   return (
     <div className="ar-overlay" onClick={onClose}>
