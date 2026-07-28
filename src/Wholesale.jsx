@@ -229,7 +229,7 @@ export default function Wholesale({ role }) {
         </div>
       )}
 
-      {modal?.kind === "view" && <OrderView order={modal.order} custName={custName[modal.order.customer_id] || "—"} onClose={() => setModal(null)} />}
+      {modal?.kind === "view" && <OrderView order={modal.order} custName={custName[modal.order.customer_id] || "—"} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
       {modal?.kind === "invoice" && <InvoiceModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
       {modal?.kind === "fulfill" && <FulfillModal order={modal.order} custName={custName[modal.order.customer_id] || "—"} customer={custById[modal.order.customer_id] || null} stockWh={stockWh} canDo={canDo} onClose={() => setModal(null)} onChange={load} />}
     </div>
@@ -381,9 +381,22 @@ function NewOrder({ skuList, customers, whLoc, onCancel, onSaved }) {
 }
 
 /* ---------------- Modal: Lihat Order (read-only, tab Sales) ---------------- */
-function OrderView({ order, custName, onClose }) {
+function OrderView({ order, custName, canDo, onClose, onChange }) {
   const [lines, setLines] = useState(null);
   const [invoices, setInvoices] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const paidTotal = invoices.reduce((s, i) => s + Number(i.paid_amount || 0), 0);
+  async function cancelOrder() {
+    if (busy || paidTotal > 0) return;
+    if (!window.confirm(`Batalkan order ${order.order_no}?\n\nOrder akan ditandai Cancelled. Belum ada pembayaran & belum dikirim — jadi tidak ada stok/uang yang bergerak.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const { error } = await supabase.from("sf_do_orders").update({ status: "cancelled" }).eq("id", order.id);
+      if (error) throw error;
+      onChange && onChange(); onClose();
+    } catch (e) { setMsg("Gagal membatalkan: " + (e.message || "")); } finally { setBusy(false); }
+  }
   useEffect(() => { (async () => {
     const [lnRes, ivRes] = await Promise.all([
       supabase.from("sf_do_order_lines").select("*").eq("order_id", order.id).order("sku"),
@@ -416,6 +429,14 @@ function OrderView({ order, custName, onClose }) {
               </table>
             </div>
             <div className="small muted">Total order: <b style={{ color: "var(--ink)" }}>{fmtIDR(order.total)}</b> · {invoices.length === 0 ? "belum ada invoice" : invoices.map((i) => `${i.invoice_no} (${i.type})`).join(" · ")}</div>
+            {canDo && order.status !== "cancelled" && order.status !== "closed" && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                {paidTotal > 0
+                  ? <div className="small" style={{ color: "var(--warn)", textAlign: "right", maxWidth: 440 }}>Sudah ada pembayaran ({fmtIDR(paidTotal)}) — order tidak bisa dibatalkan dari sini. Batalkan lewat <b>Refund</b> di FinFlow.</div>
+                  : <button className="btn btn-ghost btn-sm" style={{ color: "var(--bad)", borderColor: "var(--bad-soft)" }} onClick={cancelOrder} disabled={busy}>{busy ? "…" : "Batalkan Order"}</button>}
+              </div>
+            )}
+            {msg && <div className="small err" style={{ marginTop: 8 }}>{msg}</div>}
           </>
         )}
       </div>
