@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar.jsx";
 import Laporan from "./Laporan.jsx";
 import ReturCustomer from "./ReturCustomer.jsx";
+import LogPenjualan from "./LogPenjualan.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Sales from "./Sales.jsx";
 import SkuMaster from "./SkuMaster.jsx";
@@ -118,6 +119,7 @@ export default function App() {
           if (view === "kol") return <KolReport />;
           if (view === "laporan") return <Laporan role={role} />;
           if (view === "retur") return <ReturCustomer role={role} />;
+          if (view === "logsales") return <LogPenjualan role={role} />;
           if (view === "ar") return <Penagihan role={role} />;
           if (view === "wholesale") return <Wholesale role={role} />;
           if (view === "ai") return <AnalisaAI />;
