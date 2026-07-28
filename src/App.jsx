@@ -24,6 +24,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [role, setRole] = useState(null);
   const [accessReady, setAccessReady] = useState(false);
+  useEffect(() => { window.__ALEZA_ROLE = role || '' }, [role]);
 
   useEffect(() => {
     if (!hasConfig) { setReady(true); return; }
