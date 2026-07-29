@@ -23,6 +23,7 @@ const PAGE2RES = {
   kol:        "kol_giveaway",
   ar:         "penagihan_ar",
   wholesale:  "wholesale_order",
+  paperbag:   "wholesale_order",
   skus:       "sku_master",
   admin:      "admin_panel",
   prefix:     "doc_prefix",

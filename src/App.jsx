@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar.jsx";
+import PaperbagStore from "./PaperbagStore.jsx";
 import Laporan from "./Laporan.jsx";
 import ReturCustomer from "./ReturCustomer.jsx";
 import LogPenjualan from "./LogPenjualan.jsx";
@@ -126,6 +127,7 @@ export default function App() {
           if (view === "logsales") return <LogPenjualan role={role} />;
           if (view === "ar") return <Penagihan role={role} />;
           if (view === "wholesale") return <Wholesale role={role} />;
+          if (view === "paperbag") return <PaperbagStore role={role} />;
           if (view === "ai") return <AnalisaAI />;
           if (view === "panduan") return <Panduan />;
           if (view === "admin") return <AdminPanel currentUserId={session.user.id} />;

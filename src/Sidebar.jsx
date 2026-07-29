@@ -27,6 +27,7 @@ const GROUPS = [
     items: [
       { k: "ar", label: "Invoice Store", icon: "M5 3h11l4 4v14H5zM16 3v4h4M8 12h8M8 16h5M8 8h3" },
       { k: "wholesale", label: "Direct Purchase", icon: "M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2Zm8 0a1 1 0 100-2 1 1 0 000 2Z" },
+      { k: "paperbag", label: "Paperbag ke Store", icon: "M6 2l1.5 4h9L18 2M4 6h16l-1.5 14h-13z M9 11h6" },
     ],
   },
   {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
-import { loadHiddenSkus, isHiddenSku, fullyHiddenDocIds } from "./hiddenData.js";
+import { loadHiddenSkus, isHiddenSku, fullyHiddenDocIds, isHiddenDo } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 import { loadPrefixes, renderNumber, numberStem } from "./prefixes.js";
@@ -80,7 +80,7 @@ export default function Wholesale({ role }) {
         a.delivered += (Number(l.unit_price) || 0) * (Number(l.qty_fulfilled) || 0);
       });
       const wh = (loc.data || []).find((l) => l.type === "wh_main");
-      setOrders((ordRes.data || []).filter((o) => !hiddenOrderIds.has(o.id))); setCustomers(custRes.data || []);
+      setOrders((ordRes.data || []).filter((o) => !hiddenOrderIds.has(o.id) && !isHiddenDo(o))); setCustomers(custRes.data || []);
       setInvsByOrder(invMap); setAggByOrder(agg); setWhLoc(wh?.location_id || "");
       if (wh?.location_id) {
         const { data: soh } = await supabase.from("v_cf_stock_on_hand").select("sku,qty").eq("location_id", wh.location_id);

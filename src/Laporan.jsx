@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
-import { loadHiddenSkus, isHiddenSku } from "./hiddenData.js";
+import { loadHiddenSkus, isHiddenSku, isHiddenDo } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName, dShort } from "./format.js";
 import { canViewRes } from "./permissions.js";
 
@@ -215,7 +215,7 @@ export default function Laporan() {
     }
 
     if (key === "direct") {
-      const orders = await fetchAll(() => supabase.from("sf_do_orders").select("*").gte("order_date", from).lte("order_date", to));
+      const orders = (await fetchAll(() => supabase.from("sf_do_orders").select("*").gte("order_date", from).lte("order_date", to))).filter((o) => !isHiddenDo(o));
       const ordById = {}; orders.forEach((o) => { ordById[o.id] = o; });
       const ids = orders.map((o) => o.id);
       const [lines, custRes, invRes] = await Promise.all([

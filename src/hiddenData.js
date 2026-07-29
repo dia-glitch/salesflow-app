@@ -11,6 +11,13 @@ import { supabase } from "./supabaseClient.js";
 const HIDDEN_NAMES        = ["Beyva Testing Blouse Brick"];
 const HIDDEN_NAME_PREFIX  = ["Beyva Testing"]; // cocok bila product_name_system diawali string ini
 
+// DO / Direct Purchase spesifik yang disembunyikan (mis. order salah tes).
+const HIDDEN_DO_ORDERS = ["DO-2607-003"];
+export function isHiddenDo(order) {
+  const no = order?.order_no ?? order?.do_no ?? "";
+  return HIDDEN_DO_ORDERS.includes(String(no).trim());
+}
+
 export function isHiddenName(name) {
   const s = name == null ? "" : String(name).trim();
   if (!s) return false;
