@@ -13,6 +13,36 @@ const KOL_CH = "KOL";
 
 const alignTotals = (len, pairs) => { const a = Array(len).fill(null); pairs.forEach(([i, v]) => { a[i] = v; }); return a; };
 
+/* Aging by Launch — kategori SAMA dengan Dashboard/ChannelFlow (umur produk sejak launch date koleksi) */
+const LIFE_BUCKETS = [
+  { key: "New", label: "New", color: "#2FA37C" },
+  { key: "Evergreen 1", label: "Evergreen 1", color: "#3E9E7E" },
+  { key: "Evergreen 2", label: "Evergreen 2", color: "#4A8FB0" },
+  { key: "Clearance 1", label: "Clearance 1", color: "#C4881A" },
+  { key: "Clearance 2", label: "Clearance 2", color: "#EF6C3B" },
+  { key: "Old", label: "Old", color: "#CE3F54" },
+  { key: "Upcoming", label: "Upcoming", color: "#868D9A" },
+];
+function monthsSince(launchVal, nowMs) {
+  const l = new Date(launchVal), n = new Date(nowMs);
+  let m = (n.getFullYear() - l.getFullYear()) * 12 + (n.getMonth() - l.getMonth());
+  if (n.getDate() < l.getDate()) m--;
+  return m;
+}
+function lifecycleOf(launchVal, nowMs) {
+  if (!launchVal) return "Tanpa launch date";
+  const t = new Date(launchVal).getTime();
+  if (isNaN(t)) return "Tanpa launch date";
+  if (t > nowMs) return "Upcoming";
+  const m = monthsSince(launchVal, nowMs);
+  if (m < 1) return "New";
+  if (m < 3) return "Evergreen 1";
+  if (m < 6) return "Evergreen 2";
+  if (m < 9) return "Clearance 1";
+  if (m < 12) return "Clearance 2";
+  return "Old";
+}
+
 async function fetchAll(builder) {
   const PAGE = 1000; let from = 0, out = [];
   for (let i = 0; i < 300; i++) {
@@ -47,12 +77,14 @@ const ICONS = {
   receipt: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/>',
   truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
   undo: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M8 17v-5"/><path d="M13 17V8"/><path d="M18 17v-9"/>',
 };
 function Icon({ k, color, size = 22 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: ICONS[k] || "" }} />;
 }
 
 const REPORTS = [
+  { key: "summary", label: "Ringkasan Penjualan",   desc: "Total pcs terjual + % per kategori aging (New/Evergreen/…) & per channel · periode", filt: "range_channel", res: "penjualan",  color: "#0E7C86", icon: "chart" },
   { key: "sales",  label: "Download Penjualan",     desc: "Semua transaksi penjualan · bisa difilter per channel & periode",            filt: "range_channel", res: "penjualan",       color: "#1F5FA8", icon: "cart" },
   { key: "kol",    label: "Laporan KOL / Giveaway", desc: "Produk yang keluar ke KOL/influencer (channel KOL) + nilai retail · periode", filt: "range",         res: "kol_giveaway",    color: "#7C3AED", icon: "gift" },
   { key: "ar",     label: "Daftar AR (SKU-level)",  desc: "Piutang per invoice AR + rincian tiap SKU (margin, retur) · versi lengkap",  filt: "range",         res: "penagihan_ar",    color: "#C4881A", icon: "receipt" },
@@ -225,6 +257,64 @@ export default function Laporan() {
       return pack(`Laporan Retur — ${dShort(from)} s/d ${dShort(to)}${channel ? " · " + ch(channel) : ""}`, headers, body, totals, `Retur${chLabel}_${from}_${to}.xlsx`);
     }
 
+    if (key === "summary") {
+      // launch date: collection_code -> launch_date (via spk_orders); sku -> spk_id -> collection_code (dari ref)
+      const soRes = await supabase.from("spk_orders").select("collection_code,launch_date");
+      if (soRes.error) throw soRes.error;
+      const launchByColl = {};
+      (soRes.data || []).forEach((o) => { if (o.collection_code && o.launch_date && !launchByColl[o.collection_code]) launchByColl[o.collection_code] = o.launch_date; });
+      const launchOf = (sku) => { const si = ref.si[sku]; if (!si) return null; const sp = ref.sp[si.spk_id]; if (!sp) return null; return launchByColl[sp.collection_code] || null; };
+
+      const rows = await fetchAll(() => {
+        let q = supabase.from("cf_sales_fact").select("txn_date,channel_id,sku,qty,net_amount");
+        if (channel) q = q.eq("channel_id", channel); else q = q.neq("channel_id", KOL_CH);
+        return q.gte("txn_date", from).lte("txn_date", to);
+      });
+
+      const agingAgg = {}, chAgg = {};
+      let totPcs = 0, totNet = 0;
+      for (const r of rows) {
+        const q = num(r.qty), net = num(r.net_amount);
+        totPcs += q; totNet += net;
+        const b = lifecycleOf(launchOf(r.sku), new Date(r.txn_date).getTime()); // umur produk SAAT terjual
+        (agingAgg[b] || (agingAgg[b] = { pcs: 0, net: 0 }));
+        agingAgg[b].pcs += q; agingAgg[b].net += net;
+        const cid = r.channel_id || "—";
+        (chAgg[cid] || (chAgg[cid] = { pcs: 0, net: 0 }));
+        chAgg[cid].pcs += q; chAgg[cid].net += net;
+      }
+      const pctOf = (a, b) => (b ? (a / b) * 100 : 0);
+
+      const seen = new Set(), agingRows = [];
+      for (const b of LIFE_BUCKETS) if (agingAgg[b.key]) { agingRows.push({ label: b.label, color: b.color, ...agingAgg[b.key] }); seen.add(b.key); }
+      for (const k of Object.keys(agingAgg)) if (!seen.has(k)) agingRows.push({ label: k, color: "#9AA0AA", ...agingAgg[k] });
+      agingRows.forEach((r) => { r.pctPcs = pctOf(r.pcs, totPcs); r.pctNet = pctOf(r.net, totNet); });
+
+      const chRows = Object.entries(chAgg)
+        .map(([cid, v]) => ({ label: ch(cid), pcs: v.pcs, net: v.net, pctPcs: pctOf(v.pcs, totPcs), pctNet: pctOf(v.net, totNet) }))
+        .sort((a, b) => b.pcs - a.pcs);
+
+      const scope = channel ? ch(channel) : "Semua channel (tanpa KOL/giveaway)";
+      const p1 = (n) => +Number(n).toFixed(1);
+      const agingAoa = [[`Ringkasan Penjualan per Kategori Aging — ${dShort(from)} s/d ${dShort(to)} · ${scope}`], ["Dibuat: " + stampNow()], [],
+        ["Kategori Aging", "Pcs", "% Pcs", "Net (Rp)", "% Net"],
+        ...agingRows.map((r) => [r.label, r.pcs, p1(r.pctPcs), rp(r.net), p1(r.pctNet)]),
+        ["TOTAL", totPcs, 100, rp(totNet), 100]];
+      const chAoa = [[`Ringkasan Penjualan per Channel — ${dShort(from)} s/d ${dShort(to)} · ${scope}`], ["Dibuat: " + stampNow()], [],
+        ["Channel", "Pcs", "% Pcs", "Net (Rp)", "% Net"],
+        ...chRows.map((r) => [r.label, r.pcs, p1(r.pctPcs), rp(r.net), p1(r.pctNet)]),
+        ["TOTAL", totPcs, 100, rp(totNet), 100]];
+
+      return {
+        kind: "summary",
+        title: `Ringkasan Penjualan — ${dShort(from)} s/d ${dShort(to)}`,
+        filename: `Ringkasan_Penjualan_${from}_${to}.xlsx`,
+        summary: { totPcs, totNet, agingRows, chRows, scope, from, to },
+        body: agingRows,
+        sheets: [{ name: "Ringkasan Aging", aoa: agingAoa }, { name: "Per Channel", aoa: chAoa }],
+      };
+    }
+
     throw new Error("Laporan tidak dikenal");
   }
 
@@ -306,7 +396,9 @@ export default function Laporan() {
 
           {err && <div className="card" style={{ margin: 0, background: "var(--bad-soft)", borderColor: "#E7B7AD", color: "var(--bad)" }}>{err}</div>}
 
-          {result && (
+          {result && (result.kind === "summary" ? (
+            <SummaryCard result={result} onDownload={() => downloadXlsx(result.filename, result.sheets)} />
+          ) : (
             <div className="card" style={{ margin: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ fontWeight: 700 }}>Hasil · {result.body.length.toLocaleString("id-ID")} baris</div>
@@ -329,7 +421,63 @@ export default function Laporan() {
                     {result.body.length > 200 && <div style={{ padding: "10px 4px 0", fontSize: 12, color: "var(--sub)" }}>Menampilkan 200 dari {result.body.length.toLocaleString("id-ID")} baris · file Excel berisi semua.</div>}
                   </div>}
             </div>
-          )}
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryCard({ result, onDownload }) {
+  const s = result.summary;
+  const Bar = ({ label, color, pcs, pctPcs, net }) => (
+    <div style={{ marginBottom: 11 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, fontSize: 13, marginBottom: 5 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--ink)", fontWeight: 600, minWidth: 0 }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: color || "var(--online)", flexShrink: 0 }} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        </span>
+        <span style={{ display: "flex", gap: 14, alignItems: "baseline", flexShrink: 0 }}>
+          <b>{fmtNum(pcs)} pcs</b>
+          <span style={{ color: "var(--sub)", minWidth: 46, textAlign: "right" }}>{pctPcs.toFixed(1)}%</span>
+          <span style={{ color: "var(--faint)", fontSize: 12, minWidth: 104, textAlign: "right" }}>{fmtIDR(net)}</span>
+        </span>
+      </div>
+      <div style={{ height: 7, background: "var(--surface2)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ width: Math.max(0, Math.min(100, pctPcs)) + "%", height: "100%", background: color || "var(--online)", borderRadius: 6 }} />
+      </div>
+    </div>
+  );
+  const Stat = ({ label, value, big }) => (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--faint)", textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</div>
+      <div style={{ fontSize: big ? 28 : 18, fontWeight: 800, color: "var(--ink)", marginTop: 3, letterSpacing: "-.4px" }}>{value}</div>
+    </div>
+  );
+  return (
+    <div className="card" style={{ margin: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 30, flexWrap: "wrap" }}>
+          <Stat label="Total pcs terjual" value={fmtNum(s.totPcs) + " pcs"} big />
+          <Stat label="Total net penjualan" value={fmtIDR(s.totNet)} big />
+          <Stat label="Cakupan" value={s.scope} />
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={onDownload}>⬇ Download Excel</button>
+      </div>
+
+      {s.totPcs === 0 ? (
+        <div style={{ padding: 20, textAlign: "center", color: "var(--sub)" }}>Tidak ada penjualan untuk parameter ini.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 26 }}>
+          <div>
+            <div className="section-label" style={{ marginBottom: 12 }}>Per Kategori Aging</div>
+            {s.agingRows.map((r) => <Bar key={r.label} {...r} />)}
+            <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 8, lineHeight: 1.5 }}>Umur produk dihitung saat terjual, dari launch date koleksi. Produk tanpa launch date masuk “Tanpa launch date”.</div>
+          </div>
+          <div>
+            <div className="section-label" style={{ marginBottom: 12 }}>Per Channel</div>
+            {s.chRows.map((r) => <Bar key={r.label} {...r} color="var(--online)" />)}
+          </div>
         </div>
       )}
     </div>
