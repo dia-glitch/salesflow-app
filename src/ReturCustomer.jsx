@@ -200,6 +200,10 @@ function BuatRetur({ channels, nameMap, onDone }) {
     if (busy) return;
     if (!channel) { setMsg({ t: "err", m: "Pilih channel." }); return; }
     if (!soRef.trim()) { setMsg({ t: "err", m: "Isi No. Sales Order." }); return; }
+    if (!custName.trim()) { setMsg({ t: "err", m: "Nama customer wajib diisi." }); return; }
+    if (route === "finflow_refund" && (!bankName.trim() || !accNo.trim() || !accName.trim())) {
+      setMsg({ t: "err", m: "Detail rekening (Bank, No. Rekening, Atas Nama) wajib diisi untuk refund via FinFlow." }); return;
+    }
     const picked = (cand || []).map((l) => ({ ...l, retQty: Math.max(0, num(l.retQty)) })).filter((l) => l.retQty > 0);
     if (!picked.length) { setMsg({ t: "err", m: "Isi qty retur minimal satu SKU." }); return; }
     for (const l of picked) if (l.sold && l.retQty > l.sold) { setMsg({ t: "err", m: `Qty retur ${l.sku} melebihi qty terjual (${l.sold}).` }); return; }
@@ -252,7 +256,7 @@ function BuatRetur({ channels, nameMap, onDone }) {
             <option value="finflow_refund">Refund via FinFlow (online/reseller)</option>
           </select>
         </div>
-        <div><label>Customer</label><input value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Nama customer (opsional)" /></div>
+        <div><label>Customer *</label><input value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Nama customer" /></div>
       </div>
       <div className="grid3" style={{ marginTop: 12, alignItems: "end" }}>
         <div><label>No. Sales Order *</label><input value={soRef} onChange={(e) => setSoRef(e.target.value)} placeholder="cari No. SO…" /></div>
@@ -262,11 +266,11 @@ function BuatRetur({ channels, nameMap, onDone }) {
 
       {route === "finflow_refund" && (
         <>
-          <div className="section-label" style={{ marginTop: 14 }}>Rekening tujuan refund (untuk FinFlow)</div>
+          <div className="section-label" style={{ marginTop: 14 }}>Rekening tujuan refund (wajib untuk FinFlow)</div>
           <div className="grid3" style={{ marginTop: 8 }}>
-            <div><label>Bank</label><input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="mis. BCA / Mandiri" /></div>
-            <div><label>No. Rekening</label><input value={accNo} onChange={(e) => setAccNo(e.target.value)} placeholder="contoh: 1234567890" /></div>
-            <div><label>Atas Nama</label><input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder="nama pemilik rekening" /></div>
+            <div><label>Bank *</label><input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="mis. BCA / Mandiri" /></div>
+            <div><label>No. Rekening *</label><input value={accNo} onChange={(e) => setAccNo(e.target.value)} placeholder="contoh: 1234567890" /></div>
+            <div><label>Atas Nama *</label><input value={accName} onChange={(e) => setAccName(e.target.value)} placeholder="nama pemilik rekening" /></div>
           </div>
         </>
       )}
