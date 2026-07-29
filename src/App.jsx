@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar.jsx";
 import Laporan from "./Laporan.jsx";
 import ReturCustomer from "./ReturCustomer.jsx";
 import LogPenjualan from "./LogPenjualan.jsx";
+import SalesStatusPill from "./SalesStatusPill.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Sales from "./Sales.jsx";
 import SkuMaster from "./SkuMaster.jsx";
@@ -105,9 +106,12 @@ export default function App() {
     <div className="app">
       <Sidebar tab={tab} setTab={setTab} role={role} />
       <div className="main">
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12, marginBottom: 10 }}>
-          <span className="small muted">{session.user.email}{role ? " · " + role : ""}</span>
-          <button className="btn btn-ghost" onClick={logout}>Keluar</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <SalesStatusPill setTab={setTab} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="small muted">{session.user.email}{role ? " · " + role : ""}</span>
+            <button className="btn btn-ghost" onClick={logout}>Keluar</button>
+          </div>
         </div>
         {(() => {
           const view = canView(role, tab) ? tab : "dash";

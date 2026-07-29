@@ -27,12 +27,12 @@ const GROUPS = [
     items: [
       { k: "ar", label: "Invoice Store", icon: "M5 3h11l4 4v14H5zM16 3v4h4M8 12h8M8 16h5M8 8h3" },
       { k: "wholesale", label: "Direct Purchase", icon: "M3 3h2l2 12h11l2-8H6M9 21a1 1 0 100-2 1 1 0 000 2Zm8 0a1 1 0 100-2 1 1 0 000 2Z" },
-      { k: "laporan", label: "Laporan", icon: "M4 4v16h16 M8 14v3 M12 10v7 M16 6v11" },
     ],
   },
   {
     title: "Data",
     items: [
+      { k: "laporan", label: "Laporan", icon: "M4 4v16h16 M8 14v3 M12 10v7 M16 6v11" },
       { k: "skus", label: "SKU Master", icon: "M4 7h16M4 7l1 13h14l1-13M9 7V4h6v3" },
     ],
   },

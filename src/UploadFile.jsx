@@ -269,7 +269,9 @@ export default function UploadFile({ role }) {
     });
     setBusy(true);
     try {
-      const { data, error } = await supabase.from("cf_sales_staging").insert(payload).select("id");
+      const { data: { user: _u } } = await supabase.auth.getUser();
+      const payloadU = payload.map((p) => ({ ...p, input_by: _u?.email || null }));
+      const { data, error } = await supabase.from("cf_sales_staging").insert(payloadU).select("id");
       if (error) throw error;
       setSaveMsg({ type: "ok", text: `Tersimpan ${data.length} baris ke staging (batch ${payload[0].file_label}).` });
     } catch (e) {

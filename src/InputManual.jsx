@@ -213,9 +213,11 @@ export default function InputManual({ role }) {
     setBusy(true);
     try {
       const fileLabel = payload[0].file_label;
+      const { data: { user: _u } } = await supabase.auth.getUser();
+      const payloadU = payload.map((p) => ({ ...p, input_by: _u?.email || null }));
       const { data: ins, error: insErr } = await supabase
         .from("cf_sales_staging")
-        .insert(payload)
+        .insert(payloadU)
         .select("id");
       if (insErr) throw insErr;
 
