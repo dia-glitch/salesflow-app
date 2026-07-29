@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, todayISO } from "./format.js";
 import { canAct } from "./permissions.js";
 import { loadChannelPrefixes, yymmdd, lastOrderSeq } from "./prefixes.js";
@@ -98,6 +99,7 @@ export default function UploadFile({ role }) {
           supabase.from("cogm_retail_prices").select("spk_id,retail_price"),
         ]);
         for (const r of [ch, loc, si, prc]) if (r.error) throw r.error;
+        await loadHiddenSkus(); si.data = rejectHidden(si.data);
         const prcBySpk = {};
         (prc.data || []).forEach((p) => { if (p.spk_id) prcBySpk[p.spk_id] = p; });
         const map = {};

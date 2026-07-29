@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtShort, fmtNum, cleanName } from "./format.js";
 
 const thisMonth = () => {
@@ -50,6 +51,7 @@ export default function AnalisaAI() {
           supabase.from("sales_targets").select("month,target_key,target_amount"),
         ]);
         for (const r of [fact, ch, loc, items, prods, prices, stock, targets]) if (r.error) throw r.error;
+        await loadHiddenSkus(); fact.data = rejectHidden(fact.data);
         setRaw({
           fact: fact.data || [], ch: ch.data || [], loc: loc.data || [], items: items.data || [],
           prods: prods.data || [], prices: prices.data || [], stock: stock.data || [], targets: targets.data || [],

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, isHidden } from "./hiddenData.js";
 import { fmtIDR, fmtNum } from "./format.js";
 
 /* ============ Log Penjualan — riwayat batch Input/Upload + Batalkan (admin) ============
@@ -29,9 +30,11 @@ export default function LogPenjualan({ role }) {
       supabase.from("cf_sales_staging").select("id,source,file_label,imported_at,cancelled,cancelled_at,raw").order("imported_at", { ascending: false }).limit(20000),
       supabase.from("cf_sales_channels").select("channel_id,name"),
     ]);
-    // kelompokkan per file_label (batch)
+    await loadHiddenSkus();
+    // kelompokkan per file_label (batch) — kecualikan produk tersembunyi
+    const stRows = (stRes.data || []).filter((s) => !isHidden(s.raw));
     const g = {};
-    (stRes.data || []).forEach((s) => {
+    stRows.forEach((s) => {
       const k = s.file_label || "(tanpa batch)";
       const b = g[k] || (g[k] = { file_label: k, source: s.source, imported_at: s.imported_at, cancelled: !!s.cancelled, cancelled_at: s.cancelled_at, rows: 0, total: 0, channels: new Set() });
       const r = s.raw || {};

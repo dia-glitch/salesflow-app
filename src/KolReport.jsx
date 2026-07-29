@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, fmtNum, dShort, cleanName } from "./format.js";
 
 const KOL_CH = "KOL";
@@ -31,6 +32,7 @@ export default function KolReport() {
           supabase.from("cf_locations").select("location_id,name"),
         ]);
         for (const r of [fact, items, prods, prc, loc]) if (r.error) throw r.error;
+        await loadHiddenSkus(); fact.data = rejectHidden(fact.data);
         setRaw({ fact: fact.data || [], items: items.data || [], prods: prods.data || [], prc: prc.data || [], loc: loc.data || [] });
       } catch (e) {
         setError(e.message || String(e));

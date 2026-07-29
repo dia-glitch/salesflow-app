@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, XAxis, Tooltip, Legend } from "recharts";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtShort, fmtNum, fmtIDR } from "./format.js";
 import { canAct } from "./permissions.js";
 import ProductTab from "./ProductTab.jsx";
@@ -80,6 +81,7 @@ export default function Dashboard({ role }) {
         supabase.from("spk_orders").select("collection_code,launch_date"),
       ]);
       for (const r of [f, ch, loc, tg, si, sp, so]) if (r.error) throw r.error;
+      await loadHiddenSkus(); f.data = rejectHidden(f.data);
       const cm = {}; (ch.data || []).forEach((c) => (cm[c.channel_id] = c));
       const lm = {}; (loc.data || []).forEach((l) => (lm[l.location_id] = l.name));
       // sku -> launch_date lewat collection_code

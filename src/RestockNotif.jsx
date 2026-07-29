@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtNum, cleanName } from "./format.js";
 
 const WINDOW_DAYS = 30;       // window laju jual
@@ -35,6 +36,7 @@ export default function RestockNotif() {
           supabase.from("cf_locations").select("location_id,name,type"),
         ]);
         for (const r of [fact, items, prods, stock, loc]) if (r.error) throw r.error;
+        await loadHiddenSkus(); fact.data = rejectHidden(fact.data);
         setRaw({ fact: fact.data || [], items: items.data || [], prods: prods.data || [], stock: stock.data || [], loc: loc.data || [] });
       } catch (e) {
         setError(e.message || String(e));

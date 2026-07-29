@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, isHiddenSku } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName, dShort } from "./format.js";
 import { canViewRes } from "./permissions.js";
 
@@ -157,6 +158,7 @@ export default function Laporan() {
   /* ---------------- generators ---------------- */
   async function build(key) {
     const ref = await getRef();
+    await loadHiddenSkus();
     const loc = (id) => ref.loc[id] || id || "";
     const ch = (id) => ref.ch[id] || id || "";
 
@@ -169,7 +171,7 @@ export default function Laporan() {
       rows.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
       const headers = ["Tgl", "Channel", "Lokasi", "SKU", "Kode Produk", "Produk", "Size", "Warna", "Qty", "Retail", "Harga Jual", "Diskon", "Net", "Ref Order"];
       let tQ = 0, tN = 0;
-      const body = rows.map((r) => {
+      const body = rows.filter((r) => !isHiddenSku(r.sku)).map((r) => {
         const s = skuInfo(ref, r.sku); tQ += num(r.qty); tN += num(r.net_amount);
         return [dShort(r.txn_date), ch(r.channel_id), loc(r.location_id), r.sku, s.code, s.name, s.size, s.colour, num(r.qty), rp(r.retail_price), rp(r.sale_at_price), rp(r.discount), rp(r.net_amount), r.order_ref || ""];
       });
@@ -183,7 +185,7 @@ export default function Laporan() {
       rows.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
       const headers = ["Tgl", "Lokasi", "SKU", "Kode Produk", "Produk", "Koleksi", "Size", "Warna", "Qty", "Nilai Retail", "Ref"];
       let tQ = 0, tV = 0;
-      const body = rows.map((r) => {
+      const body = rows.filter((r) => !isHiddenSku(r.sku)).map((r) => {
         const s = skuInfo(ref, r.sku); const val = num(r.qty) * num(r.retail_price);
         tQ += num(r.qty); tV += val;
         return [dShort(r.txn_date), loc(r.location_id), r.sku, s.code, s.name, s.collection, s.size, s.colour, num(r.qty), rp(val), r.order_ref || ""];
@@ -203,7 +205,7 @@ export default function Laporan() {
       });
       const headers = ["No AR", "Store", "Periode", "Status", "SKU", "Produk", "Qty", "Retail", "Harga Jual", "Sale Amount", "Disc %", "Jenis Margin", "Margin %", "Margin Store", "AR Amount", "Retur?"];
       let tQ = 0, tS = 0, tM = 0, tAr = 0;
-      const body = lines.map((l) => {
+      const body = lines.filter((l) => !isHiddenSku(l.sku)).map((l) => {
         const inv = invById[l.invoice_id] || {};
         tQ += num(l.qty); tS += num(l.sale_amount); tM += num(l.margin_store); tAr += num(l.ar_amount);
         return [inv.ar_no || "", loc(inv.location_id), `${dShort(inv.period_start)}–${dShort(inv.period_end)}`, inv.status || "", l.sku, l.product_name || skuInfo(ref, l.sku).name, num(l.qty), rp(l.retail_price), rp(l.sale_price), rp(l.sale_amount), l.disc_pct != null ? num(l.disc_pct) : "", l.margin_kind || "", l.margin_pct != null ? num(l.margin_pct) : "", rp(l.margin_store), rp(l.ar_amount), l.is_return ? "Retur" : ""];
@@ -229,7 +231,7 @@ export default function Laporan() {
       });
       const headers = ["No Order", "Tgl", "Customer", "Status", "Fulfill Lokasi", "SKU", "Kode Produk", "Produk", "Qty Order", "Qty Fulfilled", "Retail", "Unit Price", "Subtotal", "Total Order", "Terbayar"];
       let tQo = 0, tQf = 0, tSub = 0;
-      const body = lines.map((l) => {
+      const body = lines.filter((l) => !isHiddenSku(l.sku)).map((l) => {
         const o = ordById[l.order_id] || {}; const s = skuInfo(ref, l.sku);
         tQo += num(l.qty_order); tQf += num(l.qty_fulfilled); tSub += num(l.line_total);
         return [o.order_no || "", dShort(o.order_date), custName[o.customer_id] || o.customer_id || "", o.status || "", loc(o.fulfill_location_id), l.sku, s.code, l.product_name || s.name, num(l.qty_order), num(l.qty_fulfilled), rp(l.retail_price), rp(l.unit_price), rp(l.line_total), rp(o.total), rp(paidByOrder[o.id])];
@@ -247,7 +249,7 @@ export default function Laporan() {
       rows.sort((a, b) => new Date(a.txn_date) - new Date(b.txn_date));
       const headers = ["Tgl", "Channel", "Lokasi", "SKU", "Kode Produk", "Produk", "Size", "Warna", "Qty Retur", "Retail", "Harga Jual", "Nilai Retur", "Ref Order"];
       let tQ = 0, tN = 0;
-      const body = rows.map((r) => {
+      const body = rows.filter((r) => !isHiddenSku(r.sku)).map((r) => {
         const s = skuInfo(ref, r.sku); const qty = Math.abs(num(r.qty)); const val = Math.abs(num(r.net_amount));
         tQ += qty; tN += val;
         return [dShort(r.txn_date), ch(r.channel_id), loc(r.location_id), r.sku, s.code, s.name, s.size, s.colour, qty, rp(r.retail_price), rp(r.sale_at_price), rp(val), r.order_ref || ""];
@@ -274,6 +276,7 @@ export default function Laporan() {
       const agingAgg = {}, chAgg = {};
       let totPcs = 0, totNet = 0;
       for (const r of rows) {
+        if (isHiddenSku(r.sku)) continue;
         const q = num(r.qty), net = num(r.net_amount);
         totPcs += q; totNet += net;
         const b = lifecycleOf(launchOf(r.sku), new Date(r.txn_date).getTime()); // umur produk SAAT terjual

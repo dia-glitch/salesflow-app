@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, fmtNum, fmtShort, cleanName } from "./format.js";
 
 const daysSince = (iso) => {
@@ -37,6 +38,7 @@ export default function CollectionPerf() {
           supabase.from("product_images").select("product_code,image_url"),
         ]);
         for (const r of [fact, items, prods, prices, spks, stock, loc, imgs]) if (r.error) throw r.error;
+        await loadHiddenSkus(); fact.data = rejectHidden(fact.data);
         setRaw({ fact: fact.data || [], items: items.data || [], prods: prods.data || [],
           prices: prices.data || [], spks: spks.data || [], stock: stock.data || [],
           loc: loc.data || [], imgs: imgs.data || [] });

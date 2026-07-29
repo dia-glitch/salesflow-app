@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtShort, fmtNum, cleanName } from "./format.js";
 
 const stTone = (p) => p >= 60 ? "var(--good)" : p >= 35 ? "var(--warn)" : "var(--bad)";
@@ -32,6 +33,7 @@ export default function ProductTab() {
           supabase.from("product_images").select("product_code,image_url"),
         ]);
         for (const r of [fact, items, prods, prices, stock, loc, imgs]) if (r.error) throw r.error;
+        await loadHiddenSkus(); items.data = rejectHidden(items.data); fact.data = rejectHidden(fact.data);
         const im = {}; (imgs.data || []).forEach((x) => (im[x.product_code] = x.image_url));
         setImgMap(im);
 

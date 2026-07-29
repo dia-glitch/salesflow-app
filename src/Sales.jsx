@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, fmtNum, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 
@@ -53,6 +54,7 @@ export default function Sales({ role }) {
         supabase.from("sku_products").select("spk_id,product_code"),
       ]);
       for (const r of [f, ch, loc, si, prc, prod]) if (r.error) throw r.error;
+      await loadHiddenSkus(); f.data = rejectHidden(f.data);
       const cm = {}; (ch.data || []).forEach((c) => (cm[c.channel_id] = c));
       const lm = {}; (loc.data || []).forEach((l) => (lm[l.location_id] = l.name));
       const prcBySpk = {};

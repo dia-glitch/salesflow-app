@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, todayISO, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 import { loadChannelPrefixes, yymmdd, lastOrderSeq } from "./prefixes.js";
@@ -39,6 +40,7 @@ export default function InputManual({ role }) {
           supabase.from("v_cf_stock_on_hand").select("sku,location_id,qty"),
         ]);
         for (const r of [ch, loc, si, prc]) if (r.error) throw r.error;
+        await loadHiddenSkus(); si.data = rejectHidden(si.data);
         const smap = {};
         (soh.data || []).forEach((s) => { smap[`${s.location_id}|${s.sku}`] = Number(s.qty) || 0; });
         setStock(smap);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtNum, fmtShort } from "./format.js";
 
 const stTone = (p) => p >= 60 ? "var(--good)" : p >= 35 ? "var(--warn)" : "var(--bad)";
@@ -31,6 +32,7 @@ export default function ChannelOverview() {
           supabase.from("spk_orders").select("collection_code,launch_date"),
         ]);
         for (const r of [fact, ch, loc, stock, items, prods, spks]) if (r.error) throw r.error;
+        await loadHiddenSkus(); fact.data = rejectHidden(fact.data);
         setRaw({ fact: fact.data || [], ch: ch.data || [], loc: loc.data || [], stock: stock.data || [],
           items: items.data || [], prods: prods.data || [], spks: spks.data || [] });
       } catch (e) {

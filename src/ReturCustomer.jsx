@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, isHiddenSku, fullyHiddenDocIds } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName, dShort, todayISO } from "./format.js";
 
 /* ================= Return Customer (marketplace / online / reseller) =================
@@ -39,16 +40,19 @@ export default function ReturCustomer({ role }) {
 
   async function load() {
     setLoading(true);
-    const [chRes, locRes, siRes, retRes] = await Promise.all([
+    const [chRes, locRes, siRes, retRes, retLnRes] = await Promise.all([
       supabase.from("cf_sales_channels").select("channel_id,name").order("name"),
       supabase.from("cf_locations").select("location_id,name"),
       supabase.from("sku_items").select("sku,product_name_system,size_label,colour_lv2").limit(10000),
       supabase.from("sf_customer_returns").select("*").order("created_at", { ascending: false }),
+      supabase.from("sf_customer_return_lines").select("return_id,sku"),
     ]);
+    await loadHiddenSkus();
     setChannels(chRes.data || []);
     const ln = {}; (locRes.data || []).forEach((l) => (ln[l.location_id] = l.name)); setLocName(ln);
     const nm = {}; (siRes.data || []).forEach((x) => (nm[x.sku] = cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2))); setNameMap(nm);
-    setReturns(retRes.data || []);
+    const hiddenRetIds = fullyHiddenDocIds(retLnRes.data, "return_id");
+    setReturns((retRes.data || []).filter((r) => !hiddenRetIds.has(r.id)));
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -172,7 +176,8 @@ function BuatRetur({ channels, nameMap, onDone }) {
       }
       const seen = new Set(); const merged = [];
       pool.forEach((row) => { if (!seen.has(row.id)) { seen.add(row.id); merged.push(row); } });
-      const rows = merged.filter((r) => num(r.qty) > 0);
+      await loadHiddenSkus();
+      const rows = merged.filter((r) => num(r.qty) > 0 && !isHiddenSku(r.sku));
       if (!rows.length) { setMsg({ t: "err", m: "No. Order tidak ditemukan di penjualan. Cek nomornya (No. DO, No. Order marketplace, atau ID seperti DP260726-1)." }); setCand([]); return; }
       const g = {};
       rows.forEach((r) => {

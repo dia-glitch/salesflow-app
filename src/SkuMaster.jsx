@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, rejectHidden } from "./hiddenData.js";
 import { fmtIDR, fmtNum } from "./format.js";
 import { canAct } from "./permissions.js";
 
@@ -80,6 +81,7 @@ export default function SkuMaster({ role }) {
         supabase.from("product_images").select("product_code,image_url"),
       ]);
       for (const r of [items, prods, prices, spks, stock, imgs]) if (r.error) throw r.error;
+      await loadHiddenSkus(); items.data = rejectHidden(items.data);
       const im = {}; (imgs.data || []).forEach((x) => (im[x.product_code] = x.image_url));
       setImgMap(im);
 

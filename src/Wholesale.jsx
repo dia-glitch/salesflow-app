@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, isHiddenSku, fullyHiddenDocIds } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 import { loadPrefixes, renderNumber, numberStem } from "./prefixes.js";
@@ -57,27 +58,29 @@ export default function Wholesale({ role }) {
         supabase.from("sf_do_orders").select("*").order("order_date", { ascending: false }).order("created_at", { ascending: false }),
         supabase.from("sf_customers").select("*").order("name"),
         supabase.from("sf_do_invoices").select("*"),
-        supabase.from("sf_do_order_lines").select("order_id,qty_order,qty_fulfilled,unit_price"),
+        supabase.from("sf_do_order_lines").select("order_id,sku,qty_order,qty_fulfilled,unit_price"),
         supabase.from("sku_items").select("sku,spk_id,product_name_system,size_label,colour_lv2").limit(10000),
         supabase.from("sku_products").select("spk_id,product_code"),
         supabase.from("cogm_retail_prices").select("spk_id,retail_price"),
         supabase.from("cf_locations").select("location_id,name,type"),
       ]);
       for (const r of [ordRes, custRes, invRes, lnRes, si, sp, prc, loc]) if (r.error) throw r.error;
+      await loadHiddenSkus();
       const codeBySpk = {}; (sp.data || []).forEach((p) => (codeBySpk[p.spk_id] = p.product_code));
       const retBySpk = {}; (prc.data || []).forEach((p) => { if (p.spk_id) retBySpk[p.spk_id] = p.retail_price; });
-      setSkuList((si.data || []).map((x) => ({
+      setSkuList((si.data || []).filter((x) => !isHiddenSku(x.sku)).map((x) => ({
         sku: x.sku, name: cleanName(x.product_name_system || x.sku, x.size_label, x.colour_lv2),
         code: codeBySpk[x.spk_id] || "", retail: Number(retBySpk[x.spk_id] ?? 0) || 0,
       })));
       const invMap = {}; (invRes.data || []).forEach((v) => { (invMap[v.order_id] = invMap[v.order_id] || []).push(v); });
-      const agg = {}; (lnRes.data || []).forEach((l) => {
+      const hiddenOrderIds = fullyHiddenDocIds(lnRes.data, "order_id");
+      const agg = {}; (lnRes.data || []).filter((l) => !isHiddenSku(l.sku)).forEach((l) => {
         const a = agg[l.order_id] = agg[l.order_id] || { qtyOrder: 0, qtyFulfilled: 0, delivered: 0 };
         a.qtyOrder += Number(l.qty_order) || 0; a.qtyFulfilled += Number(l.qty_fulfilled) || 0;
         a.delivered += (Number(l.unit_price) || 0) * (Number(l.qty_fulfilled) || 0);
       });
       const wh = (loc.data || []).find((l) => l.type === "wh_main");
-      setOrders(ordRes.data || []); setCustomers(custRes.data || []);
+      setOrders((ordRes.data || []).filter((o) => !hiddenOrderIds.has(o.id))); setCustomers(custRes.data || []);
       setInvsByOrder(invMap); setAggByOrder(agg); setWhLoc(wh?.location_id || "");
       if (wh?.location_id) {
         const { data: soh } = await supabase.from("v_cf_stock_on_hand").select("sku,qty").eq("location_id", wh.location_id);

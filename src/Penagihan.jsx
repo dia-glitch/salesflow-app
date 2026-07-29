@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient.js";
+import { loadHiddenSkus, isHiddenSku } from "./hiddenData.js";
 import { fmtIDR, fmtNum, cleanName } from "./format.js";
 import { canAct } from "./permissions.js";
 import { loadPrefixes, renderNumber, numberStem } from "./prefixes.js";
@@ -134,8 +135,9 @@ export default function Penagihan({ role }) {
           .eq("location_id", store).gte("txn_date", wk.start).lte("txn_date", wk.end),
         supabase.from("sf_ar_invoices").select("*").eq("location_id", store).eq("period_start", wk.start).maybeSingle(),
       ]);
+      await loadHiddenSkus();
       if (!live) return;
-      setRows(fRes.data || []);
+      setRows((fRes.data || []).filter((r) => !isHiddenSku(r.sku)));
       setExisting(iRes.data || null);
     })();
     return () => { live = false; };
